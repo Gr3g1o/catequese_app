@@ -23,7 +23,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.catequese_app"
+        applicationId = "com.catequese.sjoc"
         
         // Altere aqui para 21 (Obrigatório para a Assinatura/PDF)
         minSdk = flutter.minSdkVersion 

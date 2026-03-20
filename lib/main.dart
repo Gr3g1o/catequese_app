@@ -1,19 +1,16 @@
 import 'package:flutter/material.dart';
-import 'screens/home_screen.dart'; // IMPORTAMOS AGORA O HOME SCREEN
-import 'database/app_database.dart'; 
+import 'screens/login_screen.dart';
 
 void main() {
+  // Garante que o Flutter está pronto antes de rodar o app
   WidgetsFlutterBinding.ensureInitialized();
   
-  final database = AppDatabase();
-  
-  runApp(CatequeseApp(database: database));
+  // Agora arrancamos o aplicativo direto, sem o AppDatabase!
+  runApp(const CatequeseApp());
 }
 
 class CatequeseApp extends StatelessWidget {
-  final AppDatabase database;
-  
-  const CatequeseApp({super.key, required this.database});
+  const CatequeseApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -23,8 +20,8 @@ class CatequeseApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue[800]!),
         useMaterial3: true,
       ),
-      // MUDANÇA AQUI: Agora arranca com o HomeScreen
-      home: HomeScreen(database: database),
+      // O LoginScreen agora é chamado sozinho, sem o parâmetro database
+      home: const LoginScreen(),
       debugShowCheckedModeBanner: false,
     );
   }
