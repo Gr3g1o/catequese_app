@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:signature/signature.dart';
 import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart'; // IMPORT NECESSÁRIO
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/ficha_model.dart';
 import '../services/api_service.dart';
@@ -21,9 +21,12 @@ class _FormScreenState extends State<FormScreen> {
   int _currentStep = 0;
   final _formKey = GlobalKey<FormState>();
   bool _isSaving = false;
-  String _userRole = 'user'; // Variável para controlar o acesso
+  String _userRole = 'user'; 
 
-  // Controllers (Mantidos conforme seu código original)
+  // --- LISTA DE CATEQUISTAS ---
+  List<String> _listaCatequistas = [];
+
+  // Controllers 
   final _nomeController = TextEditingController();
   final _nascimentoController = TextEditingController();
   final _cidadeController = TextEditingController();
@@ -59,7 +62,7 @@ class _FormScreenState extends State<FormScreen> {
     penStrokeWidth: 3, penColor: Colors.black, exportBackgroundColor: Colors.white,
   );
 
-  // Máscaras (Mantidas)
+  // Máscaras 
   var maskData = MaskTextInputFormatter(mask: '##/##/####', filter: {"#": RegExp(r'[0-9]')});
   var maskCelular = MaskTextInputFormatter(mask: '(##) #####-####', filter: {"#": RegExp(r'[0-9]')});
   var maskFixo = MaskTextInputFormatter(mask: '(##) ####-####', filter: {"#": RegExp(r'[0-9]')});
@@ -68,18 +71,39 @@ class _FormScreenState extends State<FormScreen> {
   @override
   void initState() {
     super.initState();
-    _carregarRole(); // Chamada para verificar quem está logado
+    _carregarRole(); 
     if (widget.initialFicha != null) {
       _preencherCampos();
     }
   }
 
-  // Busca o papel do usuário para decidir se mostra a Inscrição
   Future<void> _carregarRole() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _userRole = prefs.getString('role') ?? 'user';
     });
+    
+    // Se não for usuário comum, puxa a lista de catequistas do banco
+    if (_userRole != 'user') {
+      _buscarListaDeCatequistas();
+    }
+  }
+
+  // --- NOVA FUNÇÃO: BUSCAR CATEQUISTAS DO BANCO ---
+  Future<void> _buscarListaDeCatequistas() async {
+    try {
+      // O limite 0 traz todos os usuários da base
+      final users = await ApiService.getUsers(limit: 0); 
+      setState(() {
+        _listaCatequistas = users
+            // Filtra para pegar apenas usuários ativos que são "superuser" (Catequistas)
+            .where((u) => u['role'] == 'superuser' && u['isAtivo'] == true)
+            .map<String>((u) => u['nome'].toString())
+            .toList();
+      });
+    } catch (e) {
+      debugPrint('Erro ao carregar lista de catequistas: $e');
+    }
   }
 
   void _preencherCampos() {
@@ -114,7 +138,6 @@ class _FormScreenState extends State<FormScreen> {
     _etapa = f.etapa ?? '0';
   }
 
-  // --- MÉTODOS DE BUSCA CEP E SALVAR (MANTIDOS) ---
   Future<void> _buscarCEP(String cep) async {
     final cleanCep = cep.replaceAll('-', '');
     if (cleanCep.length != 8) return;
@@ -161,7 +184,7 @@ class _FormScreenState extends State<FormScreen> {
       numero: _numeroController.text,
       bairro: _bairroController.text,
       paroquiaAtual: _paroquiaAtualController.text,
-      catequistaAtual: _catequistaAtualController.text,
+      catequistaAtual: _catequistaAtualController.text, // Pega o valor do Autocomplete
       paisCasados: _paisCasados,
       paroquiaCasamento: _paroquiaCasamentoController.text,
       isBatizado: _isBatizado,
@@ -187,7 +210,6 @@ class _FormScreenState extends State<FormScreen> {
     if (sucesso && mounted) Navigator.pop(context, true);
   }
 
-  // --- CONSTRUÇÃO DINÂMICA DOS STEPS ---
   List<Step> _getSteps() {
     return [
       Step(
@@ -216,7 +238,7 @@ class _FormScreenState extends State<FormScreen> {
           TextFormField(controller: _cepController, inputFormatters: [maskCEP], keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'CEP', suffixIcon: const Icon(Icons.search)), onChanged: (v) { if (v.length == 9) _buscarCEP(v); }),
           TextFormField(controller: _ruaController, decoration: const InputDecoration(labelText: 'Rua')),
           Row(children: [Expanded(flex: 2, child: TextFormField(controller: _numeroController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Nº'))), const SizedBox(width: 10), Expanded(flex: 5, child: TextFormField(controller: _bairroController, decoration: const InputDecoration(labelText: 'Bairro')))]),
-          TextFormField(controller: _paroquiaAtualController, decoration: const InputDecoration(labelText: 'Paróquia Atual')),         
+          TextFormField(controller: _paroquiaAtualController, decoration: const InputDecoration(labelText: 'Paróquia Atual')),        
         ]),
         isActive: _currentStep >= 2,
       ),
@@ -238,7 +260,6 @@ class _FormScreenState extends State<FormScreen> {
         isActive: _currentStep >= 3,
       ),
 
-      // --- TRAVA DE SEGURANÇA: SÓ APARECE PARA SUPERUSER E ADMIN ---
       if (_userRole != 'user')
         Step(
           title: const Text('Inscrição'),
@@ -246,7 +267,42 @@ class _FormScreenState extends State<FormScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text('Sacramentos:', style: TextStyle(fontWeight: FontWeight.bold)),
-              TextFormField(controller: _catequistaAtualController, decoration: const InputDecoration(labelText: 'Catequista Atual')),
+              
+              // --- CAMPO AUTOCOMPLETE DE CATEQUISTA ---
+              Autocomplete<String>(
+                optionsBuilder: (TextEditingValue textEditingValue) {
+                  // Se estiver vazio, mostra a lista inteira
+                  if (textEditingValue.text.isEmpty) {
+                    return _listaCatequistas;
+                  }
+                  // Filtra pelo que está sendo digitado
+                  return _listaCatequistas.where((option) => option.toLowerCase().contains(textEditingValue.text.toLowerCase()));
+                },
+                onSelected: (String selection) {
+                  _catequistaAtualController.text = selection;
+                },
+                fieldViewBuilder: (context, controller, focusNode, onEditingComplete) {
+                  // Sincroniza a inicialização quando editamos uma ficha existente
+                  if (controller.text.isEmpty && _catequistaAtualController.text.isNotEmpty) {
+                    controller.text = _catequistaAtualController.text;
+                  }
+                  return TextFormField(
+                    controller: controller,
+                    focusNode: focusNode,
+                    onChanged: (val) {
+                      _catequistaAtualController.text = val; // Mantém o controller original atualizado se ele só digitar
+                    },
+                    decoration: const InputDecoration(
+                      labelText: 'Catequista Atual',
+                      hintText: 'Busque o catequista...',
+                      suffixIcon: Icon(Icons.arrow_drop_down),
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 10),
+              // ----------------------------------------
+
               CheckboxListTile(title: const Text('Batismo'), value: _inscBatismo, onChanged: (v) => setState(() => _inscBatismo = v!)),
               CheckboxListTile(title: const Text('Eucaristia'), value: _inscEucaristia, onChanged: (v) => setState(() => _inscEucaristia = v!)),
               CheckboxListTile(title: const Text('Crisma'), value: _inscCrisma, onChanged: (v) => setState(() => _inscCrisma = v!)),
@@ -278,7 +334,7 @@ class _FormScreenState extends State<FormScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final steps = _getSteps(); // Obtém a lista filtrada
+    final steps = _getSteps(); 
 
     return Scaffold(
       appBar: AppBar(title: Text(widget.initialFicha != null ? 'Editar Ficha' : 'Nova Ficha')),
@@ -287,12 +343,9 @@ class _FormScreenState extends State<FormScreen> {
           Form(
             key: _formKey,
             child: Stepper(
-              // --- AQUI ESTÁ A CORREÇÃO MÁGICA ---
               key: ValueKey(steps.length), 
-              // -----------------------------------
               currentStep: _currentStep,
               onStepContinue: () {
-                // Lógica de limite dinâmica baseada na quantidade de steps
                 if (_currentStep < steps.length - 1) {
                   setState(() => _currentStep++);
                 } else {
