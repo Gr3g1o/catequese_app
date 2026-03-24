@@ -9,28 +9,53 @@ class AdminScreen extends StatefulWidget {
 }
 
 class _AdminScreenState extends State<AdminScreen> {
+  // --- VARIÁVEIS DE PAGINAÇÃO ---
   List<dynamic> _users = [];
   bool _isLoading = true;
+  bool _isLoadingMore = false;
+  int _currentPage = 1;
+  bool _hasMore = true;
+  final ScrollController _scrollController = ScrollController();
 
-  // Variáveis de Controle de Filtros e Busca
+  // --- VARIÁVEIS DE CONTROLE DE FILTROS E BUSCA ---
   bool _isSearching = false;
   String _buscaText = '';
   final TextEditingController _searchController = TextEditingController();
   
   String _filtroRole = 'todos'; // todos, admin, superuser, user
+  String _filtroStatus = 'todos'; // todos, ativos, inativos
   String _ordenacao = 'nome_az'; // nome_az, nome_za, data_recente, data_antigo
 
   @override
   void initState() {
     super.initState();
-    _carregarUsuarios();
+    _carregarUsuarios(isRefresh: true);
+
+    // Listener para o Scroll Infinito
+    _scrollController.addListener(() {
+      if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200 && !_isLoadingMore && _hasMore) {
+        _carregarMaisUsuarios();
+      }
+    });
   }
 
-  Future<void> _carregarUsuarios() async {
-    setState(() => _isLoading = true);
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  // --- MÉTODOS DE BUSCA (COM PAGINAÇÃO) ---
+  Future<void> _carregarUsuarios({bool isRefresh = false}) async {
+    if (isRefresh) {
+      setState(() { _isLoading = true; _currentPage = 1; _hasMore = true; _users.clear(); });
+    }
     try {
-      final users = await ApiService.getUsers();
-      setState(() => _users = users);
+      final novosUsers = await ApiService.getUsers(page: _currentPage, limit: 10);
+      setState(() {
+        if (novosUsers.length < 10) _hasMore = false; // Acabou a lista
+        _users.addAll(novosUsers);
+      });
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Erro ao carregar usuários')));
     } finally {
@@ -38,9 +63,16 @@ class _AdminScreenState extends State<AdminScreen> {
     }
   }
 
+  Future<void> _carregarMaisUsuarios() async {
+    setState(() => _isLoadingMore = true);
+    _currentPage++;
+    await _carregarUsuarios();
+    setState(() => _isLoadingMore = false);
+  }
+
   // --- LÓGICA DE FILTRAGEM E ORDENAÇÃO ---
   List<dynamic> _filtrarEOrdenarUsuarios() {
-    // 1. Filtrar por Busca e Role
+    // 1. Filtrar
     List<dynamic> filtrados = _users.where((user) {
       final nome = (user['nome'] ?? '').toString().toLowerCase();
       final email = (user['email'] ?? '').toString().toLowerCase();
@@ -48,7 +80,12 @@ class _AdminScreenState extends State<AdminScreen> {
       
       final bateRole = _filtroRole == 'todos' || user['role'] == _filtroRole;
 
-      return bateBusca && bateRole;
+      bool isActive = user['isAtivo'] ?? true; // Se não tiver o campo, assume true
+      final bateStatus = _filtroStatus == 'todos' || 
+                         (_filtroStatus == 'ativos' && isActive) || 
+                         (_filtroStatus == 'inativos' && !isActive);
+
+      return bateBusca && bateRole && bateStatus;
     }).toList();
 
     // 2. Ordenar
@@ -69,13 +106,13 @@ class _AdminScreenState extends State<AdminScreen> {
     return filtrados;
   }
 
-  // --- MÉTODOS DE CRUD (MANTIDOS) ---
+  // --- MÉTODOS DE CRUD ---
   Future<void> _deletarUsuario(String id) async {
     bool confirm = await showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Excluir Usuário?'),
-        content: const Text('Esta ação não pode ser desfeita.'),
+        title: const Text('Excluir Usuário permanentemente?'),
+        content: const Text('Esta ação não pode ser desfeita. Para apenas suspender o acesso, use a opção "Inativar" editando o usuário.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
           TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Excluir', style: TextStyle(color: Colors.red))),
@@ -86,7 +123,7 @@ class _AdminScreenState extends State<AdminScreen> {
     if (confirm == true) {
       try {
         await ApiService.deleteUser(id);
-        _carregarUsuarios();
+        _carregarUsuarios(isRefresh: true);
       } catch (e) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Erro ao excluir')));
       }
@@ -100,6 +137,7 @@ class _AdminScreenState extends State<AdminScreen> {
     final usernameCtrl = TextEditingController(text: user?['username'] ?? '');
     final passwordCtrl = TextEditingController();
     String roleSelecionado = user?['role'] ?? 'user';
+    bool isActiveSelecionado = user?['isAtivo'] ?? true;
 
     showDialog(
       context: context,
@@ -116,7 +154,7 @@ class _AdminScreenState extends State<AdminScreen> {
                   TextField(controller: usernameCtrl, decoration: const InputDecoration(labelText: 'Username (Admin/SuperUser)')),
                   TextField(
                     controller: passwordCtrl, 
-                    decoration: InputDecoration(labelText: isEditing ? 'Nova Senha (deixe em branco para manter)' : 'Senha'),
+                    decoration: InputDecoration(labelText: isEditing ? 'Nova Senha (vazio mantém)' : 'Senha'),
                     obscureText: true,
                   ),
                   const SizedBox(height: 10),
@@ -130,6 +168,13 @@ class _AdminScreenState extends State<AdminScreen> {
                     ],
                     onChanged: (val) => setDialogState(() => roleSelecionado = val!),
                   ),
+                  const Divider(),
+                  SwitchListTile(
+                    title: const Text('Conta Ativa'),
+                    subtitle: Text(isActiveSelecionado ? 'O usuário pode logar' : 'Acesso bloqueado', style: TextStyle(color: isActiveSelecionado ? Colors.green : Colors.red)),
+                    value: isActiveSelecionado,
+                    onChanged: (val) => setDialogState(() => isActiveSelecionado = val),
+                  ),
                 ],
               ),
             ),
@@ -142,6 +187,7 @@ class _AdminScreenState extends State<AdminScreen> {
                     'email': emailCtrl.text,
                     'username': usernameCtrl.text,
                     'role': roleSelecionado,
+                    'isAtivo': isActiveSelecionado, // Envia o novo status
                   };
                   if (passwordCtrl.text.isNotEmpty) dados['password'] = passwordCtrl.text;
 
@@ -152,7 +198,7 @@ class _AdminScreenState extends State<AdminScreen> {
                       await ApiService.createUser(dados);
                     }
                     Navigator.pop(context);
-                    _carregarUsuarios();
+                    _carregarUsuarios(isRefresh: true);
                   } catch (e) {
                     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Erro: $e')));
                   }
@@ -191,9 +237,28 @@ class _AdminScreenState extends State<AdminScreen> {
               }
             }),
           ),
+          // --- BOTÃO DE REFRESH ADICIONADO AQUI ---
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Atualizar Usuários',
+            onPressed: () => _carregarUsuarios(isRefresh: true),
+          ),
+          // ----------------------------------------
+          // Botão de Filtro por Status (Ativo/Inativo)
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.check_circle_outline),
+            tooltip: 'Filtrar por Status',
+            onSelected: (val) => setState(() => _filtroStatus = val),
+            itemBuilder: (context) => [
+              const PopupMenuItem(value: 'todos', child: Text('Todos os Status')),
+              const PopupMenuItem(value: 'ativos', child: Text('Somente Ativos', style: TextStyle(color: Colors.green))),
+              const PopupMenuItem(value: 'inativos', child: Text('Somente Inativos', style: TextStyle(color: Colors.red))),
+            ],
+          ),
           // Botão de Filtro por Role
           PopupMenuButton<String>(
             icon: const Icon(Icons.filter_list),
+            tooltip: 'Filtrar Nível',
             onSelected: (val) => setState(() => _filtroRole = val),
             itemBuilder: (context) => [
               const PopupMenuItem(value: 'todos', child: Text('Todos os Perfis')),
@@ -205,6 +270,7 @@ class _AdminScreenState extends State<AdminScreen> {
           // Botão de Ordenação
           PopupMenuButton<String>(
             icon: const Icon(Icons.sort_by_alpha),
+            tooltip: 'Ordenar',
             onSelected: (val) => setState(() => _ordenacao = val),
             itemBuilder: (context) => [
               const PopupMenuItem(value: 'nome_az', child: Text('A - Z')),
@@ -215,32 +281,57 @@ class _AdminScreenState extends State<AdminScreen> {
           ),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : listagem.isEmpty
-              ? const Center(child: Text("Nenhum usuário encontrado."))
-              : ListView.builder(
-                  itemCount: listagem.length,
-                  itemBuilder: (context, index) {
-                    final user = listagem[index];
-                    return ListTile(
-                      leading: CircleAvatar(
-                        backgroundColor: user['role'] == 'admin' ? Colors.red : (user['role'] == 'superuser' ? Colors.blue : Colors.grey),
-                        child: const Icon(Icons.person, color: Colors.white),
-                      ),
-                      title: Text(user['nome'] ?? 'Sem nome'),
-                      subtitle: Text("${user['email']}\nPerfil: ${user['role'].toUpperCase()}"),
-                      isThreeLine: true,
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(icon: const Icon(Icons.edit, color: Colors.blue), onPressed: () => _abrirFormularioUsuario(user: user)),
-                          IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => _deletarUsuario(user['_id'])),
-                        ],
-                      ),
-                    );
-                  },
-                ),
+      body: RefreshIndicator(
+        onRefresh: () => _carregarUsuarios(isRefresh: true),
+        child: _isLoading 
+            ? const Center(child: CircularProgressIndicator())
+            : listagem.isEmpty
+                ? SingleChildScrollView(physics: const AlwaysScrollableScrollPhysics(), child: SizedBox(height: MediaQuery.of(context).size.height, child: const Center(child: Text("Nenhum usuário encontrado."))))
+                : ListView.builder(
+                    controller: _scrollController,
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    itemCount: listagem.length + (_isLoadingMore ? 1 : 0),
+                    itemBuilder: (context, index) {
+                      if (index == listagem.length) return const Center(child: Padding(padding: EdgeInsets.all(15), child: CircularProgressIndicator()));
+                      
+                      final user = listagem[index];
+                      final bool isAtivo = user['isAtivo'] ?? true;
+                      
+                      return ListTile(
+                        leading: CircleAvatar(
+                          // Se estiver inativo, fica escuro para destacar que algo está errado
+                          backgroundColor: !isAtivo ? Colors.grey[800] : (user['role'] == 'admin' ? Colors.red : (user['role'] == 'superuser' ? Colors.blue : Colors.grey)),
+                          child: const Icon(Icons.person, color: Colors.white),
+                        ),
+                        title: Text(
+                          user['nome'] ?? 'Sem nome', 
+                          style: TextStyle(
+                            decoration: !isAtivo ? TextDecoration.lineThrough : null, // Risco no nome se inativo
+                            color: !isAtivo ? Colors.grey : Colors.black,
+                            fontWeight: FontWeight.bold
+                          )
+                        ),
+                        subtitle: RichText(
+                          text: TextSpan(
+                            style: const TextStyle(color: Colors.black54),
+                            children: [
+                              TextSpan(text: "${user['email']}\nPerfil: ${user['role'].toUpperCase()} "),
+                              if (!isAtivo) const TextSpan(text: " [INATIVO]", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                            ],
+                          ),
+                        ),
+                        isThreeLine: true,
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(icon: const Icon(Icons.edit, color: Colors.blue), onPressed: () => _abrirFormularioUsuario(user: user)),
+                            IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => _deletarUsuario(user['_id'])),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _abrirFormularioUsuario(),
         backgroundColor: Colors.red,

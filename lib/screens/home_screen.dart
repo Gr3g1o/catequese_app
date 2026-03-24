@@ -6,6 +6,7 @@ import 'form_screen.dart';
 import 'details_screen.dart';
 import 'login_screen.dart';
 import 'admin_screen.dart'; 
+import 'profile_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -18,20 +19,25 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Ficha> _fichas = [];
   bool _isLoading = true;
   String _userRole = 'user'; 
+  String _userName = 'Carregando...';
 
-  // Filtros principais (Para SuperUser e Admin)
   String _statusFiltro = 'ativo'; 
   String _sacramentoFiltro = 'Todos'; 
   String _etapaSelecionada = 'Todas'; 
   String _catequistaSelecionado = 'Todos';
-  
-  // Nova variável para Ordenação
-  String _ordenacao = 'nome_az'; // nome_az, nome_za, recente, antigo
+  String _ordenacao = 'nome_az'; 
 
-  // Controle de Busca
   bool _isSearching = false;
   String _buscaNome = '';
   final TextEditingController _searchController = TextEditingController();
+
+  // LISTA DINÂMICA DE STATUS (Mostra inativo apenas para Admin)
+  List<String> get _listaDeStatusPermitidos {
+    if (_userRole == 'admin') {
+      return ['ativo', 'pendente', 'arquivado', 'arquivado concluído', 'inativo'];
+    }
+    return ['ativo', 'pendente', 'arquivado', 'arquivado concluído'];
+  }
 
   @override
   void initState() {
@@ -43,6 +49,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _userRole = prefs.getString('role') ?? 'user';
+      _userName = prefs.getString('userName') ?? 'Usuário';
       if (_userRole == 'user') _statusFiltro = 'pendente';
     });
     _carregarFichasDaNuvem();
@@ -51,7 +58,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _carregarFichasDaNuvem() async {
     setState(() => _isLoading = true);
     try {
-      final fichasDaNuvem = await ApiService.getFichas();
+      // Se for Admin, avisa a API para trazer as fichas inativas também
+      final fichasDaNuvem = await ApiService.getFichas(incluirInativos: _userRole == 'admin');
       setState(() => _fichas = fichasDaNuvem);
     } catch (e) {
       debugPrint('Erro ao carregar: $e');
@@ -63,11 +71,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void _fazerLogout() async {
     await ApiService.logout();
     if (mounted) {
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (context) => const LoginScreen()),
-        (route) => false,
-      );
+      Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (context) => const LoginScreen()), (route) => false);
     }
   }
 
@@ -77,13 +81,9 @@ class _HomeScreenState extends State<HomeScreen> {
       case 'pendente': return Colors.orange;
       case 'arquivado': return Colors.grey;
       case 'arquivado concluído': return Colors.blue;
+      case 'inativo': return Colors.red;
       default: return Colors.black;
     }
-  }
-
-  String _obterStatusPorIndex(int index) {
-    const statusMap = ['ativo', 'pendente', 'arquivado', 'arquivado concluído'];
-    return statusMap[index];
   }
 
   void _abrirFiltroCatequista(String sacramento, {String? etapa}) {
@@ -103,9 +103,7 @@ class _HomeScreenState extends State<HomeScreen> {
         String buscaCat = '';
         return StatefulBuilder(
           builder: (context, setDialogState) {
-            List<String> filtrados = todosCatequistas
-                .where((c) => c.toLowerCase().contains(buscaCat.toLowerCase()))
-                .toList();
+            List<String> filtrados = todosCatequistas.where((c) => c.toLowerCase().contains(buscaCat.toLowerCase())).toList();
             return AlertDialog(
               title: Text(etapa != null ? '$sacramento - Etapa $etapa' : sacramento),
               content: SizedBox(
@@ -113,10 +111,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    TextField(
-                      decoration: const InputDecoration(hintText: 'Buscar catequista...', prefixIcon: Icon(Icons.search)),
-                      onChanged: (value) => setDialogState(() => buscaCat = value),
-                    ),
+                    TextField(decoration: const InputDecoration(hintText: 'Buscar catequista...', prefixIcon: Icon(Icons.search)), onChanged: (value) => setDialogState(() => buscaCat = value)),
                     const SizedBox(height: 10),
                     Flexible(
                       child: ListView.builder(
@@ -159,12 +154,20 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // --- LÓGICA DE FILTRAGEM ---
+    // --- LÓGICA DE FILTRAGEM ATUALIZADA ---
     final List<Ficha> fichasFiltradas = _fichas.where((ficha) {
       bool bateBusca = ficha.nome.toLowerCase().contains(_buscaNome.toLowerCase());
-      if (_userRole == 'user') return bateBusca;
+      
+      // Se for usuário comum (pais), só vê o que for dele e o que estiver ativo
+      if (_userRole == 'user') return bateBusca && ficha.isAtivo;
 
-      bool bateStatus = ficha.status == _statusFiltro;
+      bool bateStatus = false;
+      if (_statusFiltro == 'inativo') {
+        bateStatus = !ficha.isAtivo; // Se quer inativos, pega isAtivo == false
+      } else {
+        bateStatus = ficha.status == _statusFiltro && ficha.isAtivo; // Se quer o resto, pega isAtivo == true
+      }
+
       bool bateSacramento = true;
       if (_sacramentoFiltro == 'Batismo') bateSacramento = ficha.inscricaoBatismo;
       else if (_sacramentoFiltro == 'Crisma') bateSacramento = ficha.inscricaoCrisma;
@@ -180,19 +183,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
     // --- LÓGICA DE ORDENAÇÃO ---
     switch (_ordenacao) {
-      case 'nome_az':
-        fichasFiltradas.sort((a, b) => a.nome.toLowerCase().compareTo(b.nome.toLowerCase()));
-        break;
-      case 'nome_za':
-        fichasFiltradas.sort((a, b) => b.nome.toLowerCase().compareTo(a.nome.toLowerCase()));
-        break;
-      case 'recente':
-        // Como o ID do MongoDB contém a data, podemos usar o ID como proxy se não tivermos a data formatada
-        fichasFiltradas.sort((a, b) => (b.id ?? "").compareTo(a.id ?? ""));
-        break;
-      case 'antigo':
-        fichasFiltradas.sort((a, b) => (a.id ?? "").compareTo(b.id ?? ""));
-        break;
+      case 'nome_az': fichasFiltradas.sort((a, b) => a.nome.toLowerCase().compareTo(b.nome.toLowerCase())); break;
+      case 'nome_za': fichasFiltradas.sort((a, b) => b.nome.toLowerCase().compareTo(a.nome.toLowerCase())); break;
+      case 'recente': fichasFiltradas.sort((a, b) => (b.id ?? "").compareTo(a.id ?? "")); break;
+      case 'antigo': fichasFiltradas.sort((a, b) => (a.id ?? "").compareTo(b.id ?? "")); break;
     }
 
     return Scaffold(
@@ -201,11 +195,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ? TextField(
               controller: _searchController,
               autofocus: true,
-              decoration: const InputDecoration(
-                hintText: 'Pesquisar nome...',
-                border: InputBorder.none,
-                hintStyle: TextStyle(color: Colors.black54),
-              ),
+              decoration: const InputDecoration(hintText: 'Pesquisar nome...', border: InputBorder.none, hintStyle: TextStyle(color: Colors.black54)),
               style: const TextStyle(color: Colors.black, fontSize: 18),
               onChanged: (value) => setState(() => _buscaNome = value),
             )
@@ -215,26 +205,24 @@ class _HomeScreenState extends State<HomeScreen> {
               children: [
                 Text(_userRole == 'user' ? 'Minha Ficha' : (_sacramentoFiltro == 'Todos' ? 'Catequese' : _sacramentoFiltro)),
                 if (_userRole != 'user' && _sacramentoFiltro != 'Todos' && (_etapaSelecionada != 'Todas' || _catequistaSelecionado != 'Todos'))
-                  Text(
-                    '${_etapaSelecionada != "Todas" ? "Etapa $_etapaSelecionada • " : ""}$_catequistaSelecionado',
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.normal),
-                  ),
+                  Text('${_etapaSelecionada != "Todas" ? "Etapa $_etapaSelecionada • " : ""}$_catequistaSelecionado', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.normal)),
               ],
             ),
         actions: [
+          // --- BOTÃO DE REFRESH ---
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Atualizar Lista',
+            onPressed: _carregarFichasDaNuvem,
+          ),
+          // ----------------------------------------
           IconButton(
             icon: Icon(_isSearching ? Icons.close : Icons.search),
-            onPressed: () {
-              setState(() {
-                _isSearching = !_isSearching;
-                if (!_isSearching) {
-                  _buscaNome = '';
-                  _searchController.clear();
-                }
-              });
-            },
+            onPressed: () => setState(() {
+              _isSearching = !_isSearching;
+              if (!_isSearching) { _buscaNome = ''; _searchController.clear(); }
+            }),
           ),
-          // Botão de Ordenação (Apenas para SuperUser/Admin)
           if (_userRole != 'user')
             PopupMenuButton<String>(
               icon: const Icon(Icons.sort_by_alpha),
@@ -246,75 +234,68 @@ class _HomeScreenState extends State<HomeScreen> {
                 const PopupMenuItem(value: 'antigo', child: Text('Mais Antigos')),
               ],
             ),
-          IconButton(
-            icon: const Icon(Icons.logout, color: Colors.redAccent),
-            onPressed: _fazerLogout,
-            tooltip: 'Sair',
-          ),
         ],
       ),
 
-      drawer: _userRole == 'user' ? null : Drawer(
-        child: ListView(
-          padding: EdgeInsets.zero,
+      drawer: Drawer(
+        child: Column(
           children: [
-            DrawerHeader(
-              decoration: const BoxDecoration(color: Color(0xFF0D47A1)),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+            InkWell(
+              onTap: () async {
+                Navigator.pop(context); 
+                final atualizou = await Navigator.push(context, MaterialPageRoute(builder: (context) => const ProfileScreen()));
+                if (atualizou == true) _carregarPerfilERecursos();
+              },
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.only(top: 60, bottom: 20, left: 20, right: 20),
+                color: const Color(0xFF1550A6),
+                child: Stack(
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const CircleAvatar(backgroundColor: Colors.white, radius: 30, child: Icon(Icons.person, color: Color(0xFF1550A6), size: 40)),
+                        const SizedBox(height: 15),
+                        Text(_userName, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold), maxLines: 2, overflow: TextOverflow.ellipsis),
+                      ],
+                    ),
+                    const Positioned(top: 0, right: 0, child: Icon(Icons.settings_outlined, color: Colors.white, size: 28)),
+                  ],
+                ),
+              ),
+            ),
+            
+            Expanded(
+              child: ListView(
+                padding: EdgeInsets.zero,
                 children: [
-                  const CircleAvatar(backgroundColor: Colors.white, child: Icon(Icons.person, color: Color(0xFF0D47A1))),
-                  const SizedBox(height: 10),
-                  Text("Acesso: ${_userRole.toUpperCase()}", style: const TextStyle(color: Colors.white, fontSize: 16)),
+                  if (_userRole != 'user') ...[
+                    ListTile(leading: const Icon(Icons.dashboard), title: const Text('Todas as Fichas'), onTap: () { setState(() { _sacramentoFiltro = 'Todos'; _etapaSelecionada = 'Todas'; _catequistaSelecionado = 'Todos'; }); Navigator.pop(context); }),
+                    ListTile(leading: const Icon(Icons.child_friendly), title: const Text('Pré-Catequese'), onTap: () => _abrirFiltroCatequista('Pré-Catequese')),
+                    ListTile(leading: const Icon(Icons.water_drop), title: const Text('Batismo'), onTap: () => _abrirFiltroCatequista('Batismo')),
+                    ExpansionTile(
+                      leading: const Icon(Icons.restaurant_menu), title: const Text('Eucaristia'),
+                      children: [
+                        ListTile(contentPadding: const EdgeInsets.only(left: 40), title: const Text('Etapa 1'), onTap: () => _abrirFiltroCatequista('Eucaristia', etapa: '1')),
+                        ListTile(contentPadding: const EdgeInsets.only(left: 40), title: const Text('Etapa 2'), onTap: () => _abrirFiltroCatequista('Eucaristia', etapa: '2')),
+                        ListTile(contentPadding: const EdgeInsets.only(left: 40), title: const Text('Etapa 3'), onTap: () => _abrirFiltroCatequista('Eucaristia', etapa: '3')),
+                      ],
+                    ),
+                    ListTile(leading: const Icon(Icons.local_fire_department), title: const Text('Crisma'), onTap: () => _abrirFiltroCatequista('Crisma')),
+                    if (_userRole == 'admin') ...[
+                      const Divider(),
+                      ListTile(leading: const Icon(Icons.admin_panel_settings, color: Colors.red), title: const Text('Gerenciar Usuários'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (context) => const AdminScreen())); }),
+                    ]
+                  ] else ...[
+                    const Padding(padding: EdgeInsets.all(20.0), child: Text('Bem-vindo ao app da catequese. Use o botão + para criar a ficha e o menu superior azul para editar seu perfil.', textAlign: TextAlign.center, style: TextStyle(color: Colors.black54)))
+                  ]
                 ],
               ),
             ),
-            ListTile(
-              leading: const Icon(Icons.dashboard),
-              title: const Text('Todas as Fichas'),
-              onTap: () {
-                setState(() { _sacramentoFiltro = 'Todos'; _etapaSelecionada = 'Todas'; _catequistaSelecionado = 'Todos'; });
-                Navigator.pop(context);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.child_friendly),
-              title: const Text('Pré-Catequese'),
-              onTap: () => _abrirFiltroCatequista('Pré-Catequese'),
-            ),
-            ListTile(
-              leading: const Icon(Icons.water_drop),
-              title: const Text('Batismo'),
-              onTap: () => _abrirFiltroCatequista('Batismo'),
-            ),
-            ExpansionTile(
-              leading: const Icon(Icons.restaurant_menu),
-              title: const Text('Eucaristia'),
-              children: [
-                ListTile(contentPadding: const EdgeInsets.only(left: 40), title: const Text('Etapa 1'), onTap: () => _abrirFiltroCatequista('Eucaristia', etapa: '1')),
-                ListTile(contentPadding: const EdgeInsets.only(left: 40), title: const Text('Etapa 2'), onTap: () => _abrirFiltroCatequista('Eucaristia', etapa: '2')),
-                ListTile(contentPadding: const EdgeInsets.only(left: 40), title: const Text('Etapa 3'), onTap: () => _abrirFiltroCatequista('Eucaristia', etapa: '3')),
-              ],
-            ),
-            ListTile(
-              leading: const Icon(Icons.local_fire_department),
-              title: const Text('Crisma'),
-              onTap: () => _abrirFiltroCatequista('Crisma'),
-            ),
-            if (_userRole == 'admin') ...[
-              const Divider(),
-              ListTile(
-                leading: const Icon(Icons.admin_panel_settings, color: Colors.red),
-                title: const Text('Gerenciar Usuários'),
-                onTap: () { 
-                  Navigator.pop(context);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const AdminScreen()),
-                  );
-                },
-              ),
-            ]
+            const Divider(height: 1),
+            ListTile(leading: const Icon(Icons.logout, color: Colors.red), title: const Text('Sair do Aplicativo', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)), onTap: _fazerLogout),
+            const SizedBox(height: 10),
           ],
         ),
       ),
@@ -322,29 +303,29 @@ class _HomeScreenState extends State<HomeScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _fichas.isEmpty 
-            ? const Center(child: Text("Nenhuma ficha cadastrada."))
+            ? const Center(child: Text("Nenhuma ficha encontrada."))
             : ListView.builder(
               itemCount: fichasFiltradas.length,
               itemBuilder: (context, index) {
                 final ficha = fichasFiltradas[index];
+                final corStatus = _obterCorStatus(!ficha.isAtivo ? 'inativo' : ficha.status);
+
                 return Card(
                   margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  shape: RoundedRectangleBorder(
-                    side: BorderSide(color: _obterCorStatus(ficha.status), width: 1.5),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
+                  shape: RoundedRectangleBorder(side: BorderSide(color: corStatus, width: 1.5), borderRadius: BorderRadius.circular(10)),
                   child: ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: _obterCorStatus(ficha.status),
-                      child: const Icon(Icons.person, color: Colors.white),
+                    leading: CircleAvatar(backgroundColor: corStatus, child: const Icon(Icons.person, color: Colors.white)),
+                    title: Text(
+                      ficha.nome, 
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        decoration: !ficha.isAtivo ? TextDecoration.lineThrough : null, // Risca o nome se inativo
+                        color: !ficha.isAtivo ? Colors.grey : Colors.black,
+                      )
                     ),
-                    title: Text(ficha.nome, style: const TextStyle(fontWeight: FontWeight.bold)),
                     subtitle: Text("${ficha.etapa != '0' ? 'Nível ${ficha.etapa} • ' : ''}${ficha.catequistaAtual ?? 'Sem catequista'}"),
                     onTap: () async {
-                      final refresh = await Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => DetailsScreen(ficha: ficha)),
-                      );
+                      final refresh = await Navigator.push(context, MaterialPageRoute(builder: (context) => DetailsScreen(ficha: ficha)));
                       if (refresh == true) _carregarFichasDaNuvem();
                     },
                   ),
@@ -352,16 +333,23 @@ class _HomeScreenState extends State<HomeScreen> {
               },
             ),
 
+      // --- BARRA INFERIOR DINÂMICA ---
       bottomNavigationBar: _userRole == 'user' ? null : BottomNavigationBar(
-        currentIndex: _statusFiltro == 'ativo' ? 0 : _statusFiltro == 'pendente' ? 1 : _statusFiltro == 'arquivado' ? 2 : 3,
-        onTap: (index) => setState(() => _statusFiltro = _obterStatusPorIndex(index)),
-        type: BottomNavigationBarType.fixed,
+        currentIndex: _listaDeStatusPermitidos.indexOf(_statusFiltro) == -1 ? 0 : _listaDeStatusPermitidos.indexOf(_statusFiltro),
+        onTap: (index) => setState(() => _statusFiltro = _listaDeStatusPermitidos[index]),
+        type: BottomNavigationBarType.fixed, // Fixed obriga os textos a aparecerem
         selectedItemColor: _obterCorStatus(_statusFiltro),
-        items: const [
-          BottomNavigationBarItem(icon: Icon(Icons.check_circle), label: 'Ativos'),
-          BottomNavigationBarItem(icon: Icon(Icons.warning), label: 'Pendentes'),
-          BottomNavigationBarItem(icon: Icon(Icons.archive), label: 'Arquivado'),
-          BottomNavigationBarItem(icon: Icon(Icons.verified), label: 'Concluído'),
+        unselectedItemColor: Colors.grey,
+        selectedFontSize: 12,
+        unselectedFontSize: 10,
+        items: [
+          const BottomNavigationBarItem(icon: Icon(Icons.check_circle), label: 'Ativos'),
+          const BottomNavigationBarItem(icon: Icon(Icons.warning), label: 'Pendentes'),
+          const BottomNavigationBarItem(icon: Icon(Icons.archive), label: 'Arquivado'),
+          const BottomNavigationBarItem(icon: Icon(Icons.verified), label: 'Concluído'),
+          // 5º BOTÃO: APENAS ADMIN
+          if (_userRole == 'admin')
+            const BottomNavigationBarItem(icon: Icon(Icons.block), label: 'Inativas'),
         ],
       ),
 

@@ -10,15 +10,12 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  bool _isInternal = false; // Alterna entre Pais ou Catequista
-  bool _codigoEnviado = false; // Alterna entre tela de E-mail ou tela de Código
+  bool _isInternal = false; 
+  bool _codigoEnviado = false; 
   bool _isLoading = false;
 
-  // Controllers para Pais (E-mail e Código)
   final _emailController = TextEditingController();
   final _codigoController = TextEditingController();
-
-  // Controllers para Catequistas (Usuário e Senha)
   final _userController = TextEditingController();
   final _passController = TextEditingController();
 
@@ -29,7 +26,6 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // --- O TEXTO DO EULA (LGPD) ---
   void _exibirEULA(BuildContext context) {
     if (_emailController.text.trim().isEmpty || !_emailController.text.contains('@')) {
       _mostrarErro('Digite um e-mail válido antes de continuar.');
@@ -46,8 +42,8 @@ class _LoginScreenState extends State<LoginScreen> {
             'Ao prosseguir, você concorda que:\n\n'
             '1. Coleta de Dados: Coletaremos seu e-mail para identificação da ficha de catequese.\n'
             '2. Uso: Seus dados serão usados exclusivamente para fins paroquiais.\n'
-            '3. Segurança: Em caso de falhas de segurança de terceiros (hospedagem), a Paróquia São José Operário fica isenta de responsabilidade civil.\n'
-            '4. Exclusão: Você pode solicitar a exclusão da sua conta e dados a qualquer momento.',
+            '3. Segurança: Em caso de falhas de segurança de terceiros, a Paróquia São José Operário fica isenta de responsabilidade civil.\n'
+            '4. Exclusão: Você pode solicitar a inativação da sua conta a qualquer momento.',
             style: TextStyle(fontSize: 13),
           ),
         ),
@@ -58,8 +54,8 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
           ElevatedButton(
             onPressed: () {
-              Navigator.pop(context); // Fecha o dialog
-              _pedirCodigo(); // Chama a função que manda o e-mail
+              Navigator.pop(context); 
+              _pedirCodigo(); 
             },
             child: const Text('ACEITAR E ENTRAR'),
           ),
@@ -68,13 +64,11 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // PASSO 1: Pede para o servidor mandar o e-mail
   Future<void> _pedirCodigo() async {
     setState(() => _isLoading = true);
-    FocusScope.of(context).unfocus(); // Fecha o teclado
+    FocusScope.of(context).unfocus(); 
 
     bool sucesso = await ApiService.solicitarCodigoEmail(_emailController.text);
-
     setState(() => _isLoading = false);
 
     if (sucesso) {
@@ -87,7 +81,53 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // PASSO 2: Valida o código digitado
+  // --- NOVO: FORÇAR DIGITAÇÃO DO NOME ---
+  Future<void> _pedirNomeObrigatorio(String emailSalvo) async {
+    final nomeCtrl = TextEditingController();
+    
+    await showDialog(
+      context: context,
+      barrierDismissible: false, // Não deixa fechar clicando fora
+      builder: (context) => AlertDialog(
+        title: const Text('Bem-vindo!'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Como este é o seu primeiro acesso, por favor, informe seu Nome e Sobrenome para identificação:'),
+            const SizedBox(height: 15),
+            TextField(
+              controller: nomeCtrl,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(
+                labelText: 'Nome e Sobrenome',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () async {
+              if (nomeCtrl.text.trim().split(' ').length < 2) {
+                _mostrarErro('Por favor, digite nome e sobrenome.');
+                return;
+              }
+              // Atualiza o perfil no banco e no app
+              await ApiService.atualizarMeuPerfil(nomeCtrl.text.trim(), emailSalvo);
+              Navigator.pop(context); // Fecha o dialog
+            },
+            child: const Text('Salvar e Continuar'),
+          ),
+        ],
+      ),
+    );
+    
+    // Após preencher, vai para a Home
+    if (mounted) {
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const HomeScreen()));
+    }
+  }
+
   Future<void> _validarCodigo() async {
     if (_codigoController.text.trim().length != 6) {
       _mostrarErro('O código deve ter 6 números.');
@@ -97,21 +137,25 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
     FocusScope.of(context).unfocus();
 
-    bool sucesso = await ApiService.validarCodigoEmail(
+    final result = await ApiService.validarCodigoEmail(
       _emailController.text,
       _codigoController.text,
     );
 
     setState(() => _isLoading = false);
 
-    if (sucesso && mounted) {
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const HomeScreen()));
+    if (result['sucesso'] == true && mounted) {
+      // Se for o primeiro acesso, o nome será "Usuário"
+      if (result['nome'] == 'Usuário' || result['nome'] == null) {
+        await _pedirNomeObrigatorio(result['email'] ?? _emailController.text);
+      } else {
+        Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const HomeScreen()));
+      }
     } else {
       _mostrarErro('Código inválido ou expirado.');
     }
   }
 
-  // LOGIN INTERNO (Catequista / Admin)
   Future<void> _loginInterno() async {
     if (_userController.text.isEmpty || _passController.text.isEmpty) {
       _mostrarErro('Preencha usuário e senha.');
@@ -121,12 +165,16 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
     FocusScope.of(context).unfocus();
 
-    bool sucesso = await ApiService.loginInterno(_userController.text, _passController.text);
+    final result = await ApiService.loginInterno(_userController.text, _passController.text);
 
     setState(() => _isLoading = false);
 
-    if (sucesso && mounted) {
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const HomeScreen()));
+    if (result['sucesso'] == true && mounted) {
+      if (result['nome'] == 'Usuário' || result['nome'] == null) {
+        await _pedirNomeObrigatorio(result['email'] ?? '');
+      } else {
+        Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const HomeScreen()));
+      }
     } else {
       _mostrarErro('Usuário ou senha incorretos.');
     }
@@ -142,7 +190,6 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // LOGOTIPO
               Image.asset('assets/logo.png', height: 120),
               const SizedBox(height: 20),
               const Text(

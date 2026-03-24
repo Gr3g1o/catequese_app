@@ -9,12 +9,13 @@ class ApiService {
   static const String baseUrl = 'https://catequese-api-6cgg.onrender.com/api';
 
   // --- LÓGICA DE TOKEN E PREFERÊNCIAS ---
-
-  static Future<void> _salvarDadosLogin(String token, String role, String userId) async {
+  static Future<void> _salvarDadosLogin(String token, String role, String userId, String nome, String email) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('token', token);
     await prefs.setString('role', role);
     await prefs.setString('userId', userId);
+    await prefs.setString('userName', nome);
+    await prefs.setString('userEmail', email);
   }
 
   static Future<String?> getToken() async {
@@ -27,9 +28,7 @@ class ApiService {
     await prefs.clear();
   }
 
-  // --- NOVAS ROTAS DE AUTENTICAÇÃO POR E-MAIL ---
-
-  // 1. Pede para o servidor enviar o código de 6 dígitos
+  // --- ROTAS DE AUTENTICAÇÃO ---
   static Future<bool> solicitarCodigoEmail(String email) async {
     try {
       final response = await http.post(
@@ -43,8 +42,8 @@ class ApiService {
     }
   }
 
-  // 2. Envia o código que o usuário digitou para validar
-  static Future<bool> validarCodigoEmail(String email, String codigo) async {
+  // Agora retorna um Map para sabermos qual o nome do usuário
+  static Future<Map<String, dynamic>> validarCodigoEmail(String email, String codigo) async {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/auth/verify-code'),
@@ -54,17 +53,17 @@ class ApiService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        await _salvarDadosLogin(data['token'], data['user']['role'], data['user']['_id']);
-        return true;
+        final user = data['user'];
+        await _salvarDadosLogin(data['token'], user['role'], user['_id'], user['nome'], user['email']);
+        return {'sucesso': true, 'nome': user['nome'], 'email': user['email']};
       }
-      return false;
+      return {'sucesso': false};
     } catch (e) {
-      return false;
+      return {'sucesso': false};
     }
   }
 
-  // --- LOGIN INTERNO PARA CATEQUISTAS/ADMIN ---
-  static Future<bool> loginInterno(String username, String password) async {
+  static Future<Map<String, dynamic>> loginInterno(String username, String password) async {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/auth/internal'),
@@ -74,21 +73,47 @@ class ApiService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        await _salvarDadosLogin(data['token'], data['user']['role'], data['user']['_id']);
-        return true;
+        final user = data['user'];
+        await _salvarDadosLogin(data['token'], user['role'], user['_id'], user['nome'], user['email']);
+        return {'sucesso': true, 'nome': user['nome'], 'email': user['email']};
       }
-      return false;
+      return {'sucesso': false};
     } catch (e) {
-      return false;
+      return {'sucesso': false};
     }
   }
 
-  // --- ROTAS DE FICHAS (COM TOKEN) - MANTIDAS IGUAIS ---
+  // --- ROTAS DO MEU PERFIL (NOVAS) ---
+  static Future<bool> atualizarMeuPerfil(String nome, String email) async {
+    final token = await getToken();
+    final response = await http.put(
+      Uri.parse('$baseUrl/users/me'),
+      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+      body: jsonEncode({'nome': nome, 'email': email}),
+    );
+    if (response.statusCode == 200) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('userName', nome);
+      await prefs.setString('userEmail', email);
+      return true;
+    }
+    return false;
+  }
 
-  static Future<List<Ficha>> getFichas() async {
+  static Future<bool> inativarMinhaConta() async {
+    final token = await getToken();
+    final response = await http.patch(
+      Uri.parse('$baseUrl/users/me/inativar'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    return response.statusCode == 200;
+  }
+
+  // --- ROTAS DE FICHAS (COM PAGINAÇÃO) ---
+static Future<List<Ficha>> getFichas({bool incluirInativos = false}) async {
     final token = await getToken();
     final response = await http.get(
-      Uri.parse('$baseUrl/fichas'),
+      Uri.parse('$baseUrl/fichas?incluirInativos=$incluirInativos'),
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',
@@ -106,10 +131,7 @@ class ApiService {
     final token = await getToken();
     final response = await http.post(
       Uri.parse('$baseUrl/fichas'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
+      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
       body: jsonEncode(ficha.toJson()),
     );
     return response.statusCode == 201;
@@ -120,10 +142,7 @@ class ApiService {
     final token = await getToken();
     final response = await http.put(
       Uri.parse('$baseUrl/fichas/${ficha.id}'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
+      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
       body: jsonEncode(ficha.toJson()),
     );
     return response.statusCode == 200;
@@ -133,25 +152,27 @@ class ApiService {
     final token = await getToken();
     final response = await http.patch(
       Uri.parse('$baseUrl/fichas/$id/inativar'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
+      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
     );
     return response.statusCode == 200;
   }
 
-  // --- ROTAS DE ADMINISTRAÇÃO DE USUÁRIOS ---
-
-  static Future<List<dynamic>> getUsers() async {
+static Future<bool> deletarFicha(String id) async {
     final token = await getToken();
-    final response = await http.get(
-      Uri.parse('$baseUrl/admin/users'),
+    final response = await http.delete(
+      Uri.parse('$baseUrl/fichas/$id'),
       headers: {'Authorization': 'Bearer $token'},
     );
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body);
-    }
+    return response.statusCode == 200;
+  }
+  // --- ROTAS DE ADMINISTRAÇÃO DE USUÁRIOS (COM PAGINAÇÃO) ---
+  static Future<List<dynamic>> getUsers({int page = 1, int limit = 10}) async {
+    final token = await getToken();
+    final response = await http.get(
+      Uri.parse('$baseUrl/admin/users?page=$page&limit=$limit'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    if (response.statusCode == 200) return jsonDecode(response.body);
     throw Exception('Falha ao carregar usuários');
   }
 
@@ -159,10 +180,7 @@ class ApiService {
     final token = await getToken();
     final response = await http.post(
       Uri.parse('$baseUrl/admin/users'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
+      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
       body: jsonEncode(userData),
     );
     if (response.statusCode != 201) throw Exception('Falha ao criar usuário');
@@ -172,10 +190,7 @@ class ApiService {
     final token = await getToken();
     final response = await http.put(
       Uri.parse('$baseUrl/admin/users/$id'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
+      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
       body: jsonEncode(userData),
     );
     if (response.statusCode != 200) throw Exception('Falha ao atualizar usuário');
