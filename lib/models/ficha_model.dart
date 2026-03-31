@@ -26,12 +26,14 @@ class Ficha {
   final String? ufBatismo;
   final String? assinaturaBase64;
   final bool isAtivo;
-  
+
   // NOVOS CAMPOS
   final bool inscricaoBatismo;
   final bool inscricaoEucaristia;
   final bool inscricaoCrisma;
   final bool inscricaoPreCatequese;
+  final bool inscricaoNoivos;
+  final bool inscricaoAdultos;
   final String? etapa;
 
   Ficha({
@@ -66,6 +68,8 @@ class Ficha {
     this.inscricaoEucaristia = false,
     this.inscricaoCrisma = false,
     this.inscricaoPreCatequese = false,
+    this.inscricaoNoivos = false,
+    this.inscricaoAdultos = false,
     this.etapa,
   });
 
@@ -102,6 +106,8 @@ class Ficha {
       inscricaoEucaristia: json['inscricaoEucaristia'] ?? false,
       inscricaoCrisma: json['inscricaoCrisma'] ?? false,
       inscricaoPreCatequese: json['inscricaoPreCatequese'] ?? false,
+      inscricaoNoivos: json['inscricaoNoivos'] ?? false,
+      inscricaoAdultos: json['inscricaoAdultos'] ?? false,
       etapa: json['etapa'],
     );
   }
@@ -138,6 +144,8 @@ class Ficha {
       'inscricaoEucaristia': inscricaoEucaristia,
       'inscricaoCrisma': inscricaoCrisma,
       'inscricaoPreCatequese': inscricaoPreCatequese,
+      'inscricaoNoivos': inscricaoNoivos,
+      'inscricaoAdultos': inscricaoAdultos,
       'etapa': etapa,
     };
   }

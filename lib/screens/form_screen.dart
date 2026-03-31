@@ -21,12 +21,12 @@ class _FormScreenState extends State<FormScreen> {
   int _currentStep = 0;
   final _formKey = GlobalKey<FormState>();
   bool _isSaving = false;
-  String _userRole = 'user'; 
+  String _userRole = 'user';
 
   // --- LISTA DE CATEQUISTAS ---
   List<String> _listaCatequistas = [];
 
-  // Controllers 
+  // Controllers
   final _nomeController = TextEditingController();
   final _nascimentoController = TextEditingController();
   final _cidadeController = TextEditingController();
@@ -56,22 +56,30 @@ class _FormScreenState extends State<FormScreen> {
   bool _inscEucaristia = false;
   bool _inscCrisma = false;
   bool _inscPreCatequese = false;
+  bool _inscNoivos = false;
+  bool _inscAdultos = false;
   String _etapa = '0';
 
   final SignatureController _signatureController = SignatureController(
-    penStrokeWidth: 3, penColor: Colors.black, exportBackgroundColor: Colors.white,
+    penStrokeWidth: 3,
+    penColor: Colors.black,
+    exportBackgroundColor: Colors.white,
   );
 
-  // Máscaras 
-  var maskData = MaskTextInputFormatter(mask: '##/##/####', filter: {"#": RegExp(r'[0-9]')});
-  var maskCelular = MaskTextInputFormatter(mask: '(##) #####-####', filter: {"#": RegExp(r'[0-9]')});
-  var maskFixo = MaskTextInputFormatter(mask: '(##) ####-####', filter: {"#": RegExp(r'[0-9]')});
-  var maskCEP = MaskTextInputFormatter(mask: '#####-###', filter: {"#": RegExp(r'[0-9]')});
+  // Máscaras
+  var maskData = MaskTextInputFormatter(
+      mask: '##/##/####', filter: {"#": RegExp(r'[0-9]')});
+  var maskCelular = MaskTextInputFormatter(
+      mask: '(##) #####-####', filter: {"#": RegExp(r'[0-9]')});
+  var maskFixo = MaskTextInputFormatter(
+      mask: '(##) ####-####', filter: {"#": RegExp(r'[0-9]')});
+  var maskCEP = MaskTextInputFormatter(
+      mask: '#####-###', filter: {"#": RegExp(r'[0-9]')});
 
   @override
   void initState() {
     super.initState();
-    _carregarRole(); 
+    _carregarRole();
     if (widget.initialFicha != null) {
       _preencherCampos();
     }
@@ -82,7 +90,7 @@ class _FormScreenState extends State<FormScreen> {
     setState(() {
       _userRole = prefs.getString('role') ?? 'user';
     });
-    
+
     // Se não for usuário comum, puxa a lista de catequistas do banco
     if (_userRole != 'user') {
       _buscarListaDeCatequistas();
@@ -93,7 +101,7 @@ class _FormScreenState extends State<FormScreen> {
   Future<void> _buscarListaDeCatequistas() async {
     try {
       // O limite 0 traz todos os usuários da base
-      final users = await ApiService.getUsers(limit: 0); 
+      final users = await ApiService.getUsers(limit: 0);
       setState(() {
         _listaCatequistas = users
             // Filtra para pegar apenas usuários ativos que são "superuser" (Catequistas)
@@ -135,6 +143,8 @@ class _FormScreenState extends State<FormScreen> {
     _inscEucaristia = f.inscricaoEucaristia;
     _inscCrisma = f.inscricaoCrisma;
     _inscPreCatequese = f.inscricaoPreCatequese;
+    _inscNoivos = f.inscricaoNoivos;
+    _inscAdultos = f.inscricaoAdultos;
     _etapa = f.etapa ?? '0';
   }
 
@@ -164,7 +174,8 @@ class _FormScreenState extends State<FormScreen> {
     String signatureBase64 = widget.initialFicha?.assinaturaBase64 ?? '';
     if (_signatureController.isNotEmpty) {
       final signatureBytes = await _signatureController.toPngBytes();
-      if (signatureBytes != null) signatureBase64 = base64Encode(signatureBytes);
+      if (signatureBytes != null)
+        signatureBase64 = base64Encode(signatureBytes);
     }
 
     final fichaParaSalvar = Ficha(
@@ -184,7 +195,8 @@ class _FormScreenState extends State<FormScreen> {
       numero: _numeroController.text,
       bairro: _bairroController.text,
       paroquiaAtual: _paroquiaAtualController.text,
-      catequistaAtual: _catequistaAtualController.text, // Pega o valor do Autocomplete
+      catequistaAtual:
+          _catequistaAtualController.text, // Pega o valor do Autocomplete
       paisCasados: _paisCasados,
       paroquiaCasamento: _paroquiaCasamentoController.text,
       isBatizado: _isBatizado,
@@ -197,6 +209,8 @@ class _FormScreenState extends State<FormScreen> {
       inscricaoEucaristia: _inscEucaristia,
       inscricaoCrisma: _inscCrisma,
       inscricaoPreCatequese: _inscPreCatequese,
+      inscricaoNoivos: _inscNoivos,
+      inscricaoAdultos: _inscAdultos,
       etapa: _etapa,
     );
 
@@ -215,59 +229,175 @@ class _FormScreenState extends State<FormScreen> {
       Step(
         title: const Text('Catequizando'),
         content: Column(children: [
-          TextFormField(controller: _nomeController, decoration: const InputDecoration(labelText: 'Nome Completo'), validator: (v) => v!.isEmpty ? 'Obrigatório' : null),
-          TextFormField(controller: _nascimentoController, inputFormatters: [maskData], keyboardType: TextInputType.number, decoration: const InputDecoration(hintText: '00/00/0000', labelText: 'Data de Nascimento'), validator: (v) => v!.isEmpty ? 'Obrigatório' : null),
-          Row(children: [Expanded(child: TextFormField(controller: _cidadeController, decoration: const InputDecoration(labelText: 'Cidade Natal'))), const SizedBox(width: 10), Expanded(child: UFAutocomplete(controller: _ufController, label: 'UF'))]),
+          TextFormField(
+              controller: _nomeController,
+              decoration: const InputDecoration(labelText: 'Nome Completo'),
+              validator: (v) => v!.isEmpty ? 'Obrigatório' : null),
+          TextFormField(
+              controller: _nascimentoController,
+              inputFormatters: [maskData],
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                  hintText: '00/00/0000', labelText: 'Data de Nascimento'),
+              validator: (v) => v!.isEmpty ? 'Obrigatório' : null),
+          Row(children: [
+            Expanded(
+                child: TextFormField(
+                    controller: _cidadeController,
+                    decoration:
+                        const InputDecoration(labelText: 'Cidade Natal'))),
+            const SizedBox(width: 10),
+            Expanded(
+                child: UFAutocomplete(controller: _ufController, label: 'UF'))
+          ]),
         ]),
         isActive: _currentStep >= 0,
       ),
       Step(
         title: const Text('Família'),
         content: Column(children: [
-          TextFormField(controller: _nomePaiController, decoration: const InputDecoration(labelText: 'Nome do Pai')),
-          Row(children: [Expanded(child: TextFormField(controller: _celularPaiController, keyboardType: TextInputType.phone, inputFormatters: [maskCelular], decoration: const InputDecoration(hintText: '(00) 00000-0000', labelText: 'Celular Pai'))), const SizedBox(width: 10), Expanded(child: TextFormField(controller: _foneFixoPaiController, keyboardType: TextInputType.phone, inputFormatters: [maskFixo], decoration: const InputDecoration(hintText: '(00) 0000-0000', labelText: 'Fixo Pai')))]),
+          TextFormField(
+              controller: _nomePaiController,
+              decoration: const InputDecoration(labelText: 'Nome do Pai')),
+          Row(children: [
+            Expanded(
+                child: TextFormField(
+                    controller: _celularPaiController,
+                    keyboardType: TextInputType.phone,
+                    inputFormatters: [maskCelular],
+                    decoration: const InputDecoration(
+                        hintText: '(00) 00000-0000',
+                        labelText: 'Celular Pai'))),
+            const SizedBox(width: 10),
+            Expanded(
+                child: TextFormField(
+                    controller: _foneFixoPaiController,
+                    keyboardType: TextInputType.phone,
+                    inputFormatters: [maskFixo],
+                    decoration: const InputDecoration(
+                        hintText: '(00) 0000-0000', labelText: 'Fixo Pai')))
+          ]),
           const Divider(height: 30),
-          TextFormField(controller: _nomeMaeController, decoration: const InputDecoration(labelText: 'Nome da Mãe')),
-          Row(children: [Expanded(child: TextFormField(controller: _celularMaeController, keyboardType: TextInputType.phone, inputFormatters: [maskCelular], decoration: const InputDecoration(hintText: '(00) 00000-0000', labelText: 'Celular Mãe'))), const SizedBox(width: 10), Expanded(child: TextFormField(controller: _foneFixoMaeController, keyboardType: TextInputType.phone, inputFormatters: [maskFixo], decoration: const InputDecoration(hintText: '(00) 0000-0000', labelText: 'Fixo Mãe')))]),
+          TextFormField(
+              controller: _nomeMaeController,
+              decoration: const InputDecoration(labelText: 'Nome da Mãe')),
+          Row(children: [
+            Expanded(
+                child: TextFormField(
+                    controller: _celularMaeController,
+                    keyboardType: TextInputType.phone,
+                    inputFormatters: [maskCelular],
+                    decoration: const InputDecoration(
+                        hintText: '(00) 00000-0000',
+                        labelText: 'Celular Mãe'))),
+            const SizedBox(width: 10),
+            Expanded(
+                child: TextFormField(
+                    controller: _foneFixoMaeController,
+                    keyboardType: TextInputType.phone,
+                    inputFormatters: [maskFixo],
+                    decoration: const InputDecoration(
+                        hintText: '(00) 0000-0000', labelText: 'Fixo Mãe')))
+          ]),
         ]),
         isActive: _currentStep >= 1,
       ),
       Step(
         title: const Text('Endereço'),
         content: Column(children: [
-          TextFormField(controller: _cepController, inputFormatters: [maskCEP], keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'CEP', suffixIcon: const Icon(Icons.search)), onChanged: (v) { if (v.length == 9) _buscarCEP(v); }),
-          TextFormField(controller: _ruaController, decoration: const InputDecoration(labelText: 'Rua')),
-          Row(children: [Expanded(flex: 2, child: TextFormField(controller: _numeroController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Nº'))), const SizedBox(width: 10), Expanded(flex: 5, child: TextFormField(controller: _bairroController, decoration: const InputDecoration(labelText: 'Bairro')))]),
-          TextFormField(controller: _paroquiaAtualController, decoration: const InputDecoration(labelText: 'Paróquia Atual')),        
+          TextFormField(
+              controller: _cepController,
+              inputFormatters: [maskCEP],
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                  labelText: 'CEP', suffixIcon: const Icon(Icons.search)),
+              onChanged: (v) {
+                if (v.length == 9) _buscarCEP(v);
+              }),
+          TextFormField(
+              controller: _ruaController,
+              decoration: const InputDecoration(labelText: 'Rua')),
+          Row(children: [
+            Expanded(
+                flex: 2,
+                child: TextFormField(
+                    controller: _numeroController,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(labelText: 'Nº'))),
+            const SizedBox(width: 10),
+            Expanded(
+                flex: 5,
+                child: TextFormField(
+                    controller: _bairroController,
+                    decoration: const InputDecoration(labelText: 'Bairro')))
+          ]),
+          TextFormField(
+              controller: _paroquiaAtualController,
+              decoration: const InputDecoration(labelText: 'Paróquia Atual')),
         ]),
         isActive: _currentStep >= 2,
       ),
       Step(
         title: const Text('Vida Cristã'),
         content: Column(children: [
-          DropdownButtonFormField<String>(value: _paisCasados, decoration: const InputDecoration(labelText: 'Pais casados na Igreja?'), items: ['Sim', 'Não'].map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(), onChanged: (v) => setState(() => _paisCasados = v!)),
-          if(_paisCasados == 'Sim')...[
-            TextFormField(controller: _paroquiaCasamentoController, decoration: const InputDecoration(labelText: 'Paróquia do Casamento')),
+          DropdownButtonFormField<String>(
+              value: _paisCasados,
+              decoration:
+                  const InputDecoration(labelText: 'Pais casados na Igreja?'),
+              items: ['Sim', 'Não']
+                  .map((v) => DropdownMenuItem(value: v, child: Text(v)))
+                  .toList(),
+              onChanged: (v) => setState(() => _paisCasados = v!)),
+          if (_paisCasados == 'Sim') ...[
+            TextFormField(
+                controller: _paroquiaCasamentoController,
+                decoration:
+                    const InputDecoration(labelText: 'Paróquia do Casamento')),
             const Divider(height: 30),
           ],
-          DropdownButtonFormField<String>(value: _isBatizado, decoration: const InputDecoration(labelText: 'Catequizando é Batizado?'), items: ['Sim', 'Não'].map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(), onChanged: (v) => setState(() => _isBatizado = v!)),
-          if(_isBatizado == 'Sim')...[
-            TextFormField(controller: _dataBatismoController, keyboardType: TextInputType.datetime, inputFormatters: [maskData], decoration: const InputDecoration(hintText: 'dd/mm/aaaa', labelText: 'Data do Batismo')),
-            TextFormField(controller: _paroquiaBatismoController, decoration: const InputDecoration(labelText: 'Paróquia do Batismo')),
-            Row(children: [Expanded(child: TextFormField(controller: _cidadeBatismoController, decoration: const InputDecoration(labelText: 'Cidade Batismo'))), const SizedBox(width: 10), Expanded(child: UFAutocomplete(controller: _ufBatismoController, label: 'UF'))]),
+          DropdownButtonFormField<String>(
+              value: _isBatizado,
+              decoration:
+                  const InputDecoration(labelText: 'Catequizando é Batizado?'),
+              items: ['Sim', 'Não']
+                  .map((v) => DropdownMenuItem(value: v, child: Text(v)))
+                  .toList(),
+              onChanged: (v) => setState(() => _isBatizado = v!)),
+          if (_isBatizado == 'Sim') ...[
+            TextFormField(
+                controller: _dataBatismoController,
+                keyboardType: TextInputType.datetime,
+                inputFormatters: [maskData],
+                decoration: const InputDecoration(
+                    hintText: 'dd/mm/aaaa', labelText: 'Data do Batismo')),
+            TextFormField(
+                controller: _paroquiaBatismoController,
+                decoration:
+                    const InputDecoration(labelText: 'Paróquia do Batismo')),
+            Row(children: [
+              Expanded(
+                  child: TextFormField(
+                      controller: _cidadeBatismoController,
+                      decoration:
+                          const InputDecoration(labelText: 'Cidade Batismo'))),
+              const SizedBox(width: 10),
+              Expanded(
+                  child: UFAutocomplete(
+                      controller: _ufBatismoController, label: 'UF'))
+            ]),
           ],
         ]),
         isActive: _currentStep >= 3,
       ),
-
       if (_userRole != 'user')
         Step(
           title: const Text('Inscrição'),
           content: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('Sacramentos:', style: TextStyle(fontWeight: FontWeight.bold)),
-              
+              const Text('Sacramentos:',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+
               // --- CAMPO AUTOCOMPLETE DE CATEQUISTA ---
               Autocomplete<String>(
                 optionsBuilder: (TextEditingValue textEditingValue) {
@@ -276,21 +406,26 @@ class _FormScreenState extends State<FormScreen> {
                     return _listaCatequistas;
                   }
                   // Filtra pelo que está sendo digitado
-                  return _listaCatequistas.where((option) => option.toLowerCase().contains(textEditingValue.text.toLowerCase()));
+                  return _listaCatequistas.where((option) => option
+                      .toLowerCase()
+                      .contains(textEditingValue.text.toLowerCase()));
                 },
                 onSelected: (String selection) {
                   _catequistaAtualController.text = selection;
                 },
-                fieldViewBuilder: (context, controller, focusNode, onEditingComplete) {
+                fieldViewBuilder:
+                    (context, controller, focusNode, onEditingComplete) {
                   // Sincroniza a inicialização quando editamos uma ficha existente
-                  if (controller.text.isEmpty && _catequistaAtualController.text.isNotEmpty) {
+                  if (controller.text.isEmpty &&
+                      _catequistaAtualController.text.isNotEmpty) {
                     controller.text = _catequistaAtualController.text;
                   }
                   return TextFormField(
                     controller: controller,
                     focusNode: focusNode,
                     onChanged: (val) {
-                      _catequistaAtualController.text = val; // Mantém o controller original atualizado se ele só digitar
+                      _catequistaAtualController.text =
+                          val; // Mantém o controller original atualizado se ele só digitar
                     },
                     decoration: const InputDecoration(
                       labelText: 'Catequista Atual',
@@ -303,29 +438,58 @@ class _FormScreenState extends State<FormScreen> {
               const SizedBox(height: 10),
               // ----------------------------------------
 
-              CheckboxListTile(title: const Text('Batismo'), value: _inscBatismo, onChanged: (v) => setState(() => _inscBatismo = v!)),
-              CheckboxListTile(title: const Text('Eucaristia'), value: _inscEucaristia, onChanged: (v) => setState(() => _inscEucaristia = v!)),
-              CheckboxListTile(title: const Text('Crisma'), value: _inscCrisma, onChanged: (v) => setState(() => _inscCrisma = v!)),
-              CheckboxListTile(title: const Text('Pré-Catequese'), value: _inscPreCatequese, onChanged: (v) => setState(() => _inscPreCatequese = v!)),
+              CheckboxListTile(
+                  title: const Text('Batismo'),
+                  value: _inscBatismo,
+                  onChanged: (v) => setState(() => _inscBatismo = v!)),
+              CheckboxListTile(
+                  title: const Text('Eucaristia'),
+                  value: _inscEucaristia,
+                  onChanged: (v) => setState(() => _inscEucaristia = v!)),
+              CheckboxListTile(
+                  title: const Text('Crisma'),
+                  value: _inscCrisma,
+                  onChanged: (v) => setState(() => _inscCrisma = v!)),
+              CheckboxListTile(
+                  title: const Text('Pré-Catequese'),
+                  value: _inscPreCatequese,
+                  onChanged: (v) => setState(() => _inscPreCatequese = v!)),
+              CheckboxListTile(
+                  title: const Text('Curso de Noivos'),
+                  value: _inscNoivos,
+                  onChanged: (v) => setState(() => _inscNoivos = v!)),
+              CheckboxListTile(
+                  title: const Text('Catequese Adultos'),
+                  value: _inscAdultos,
+                  onChanged: (v) => setState(() => _inscAdultos = v!)),
               const SizedBox(height: 10),
               DropdownButtonFormField<String>(
                 value: _etapa,
                 decoration: const InputDecoration(labelText: 'Etapa'),
-                items: ['0', '1', '2', '3'].map((v) => DropdownMenuItem(value: v, child: Text(v))).toList(),
+                items: ['0', '1', '2', '3']
+                    .map((v) => DropdownMenuItem(value: v, child: Text(v)))
+                    .toList(),
                 onChanged: (v) => setState(() => _etapa = v!),
               ),
             ],
           ),
           isActive: _currentStep >= 4,
         ),
-
       Step(
         title: const Text('Assinatura'),
         content: Column(children: [
-          const Text('Assine abaixo:', style: TextStyle(fontWeight: FontWeight.bold)),
+          const Text('Assine abaixo:',
+              style: TextStyle(fontWeight: FontWeight.bold)),
           const SizedBox(height: 10),
-          Container(decoration: BoxDecoration(border: Border.all(color: Colors.grey)), child: Signature(controller: _signatureController, height: 150, backgroundColor: Colors.white)),
-          TextButton(onPressed: () => _signatureController.clear(), child: const Text('Limpar Assinatura')),
+          Container(
+              decoration: BoxDecoration(border: Border.all(color: Colors.grey)),
+              child: Signature(
+                  controller: _signatureController,
+                  height: 150,
+                  backgroundColor: Colors.white)),
+          TextButton(
+              onPressed: () => _signatureController.clear(),
+              child: const Text('Limpar Assinatura')),
         ]),
         isActive: _currentStep >= (_userRole == 'user' ? 4 : 5),
       ),
@@ -334,16 +498,18 @@ class _FormScreenState extends State<FormScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final steps = _getSteps(); 
+    final steps = _getSteps();
 
     return Scaffold(
-      appBar: AppBar(title: Text(widget.initialFicha != null ? 'Editar Ficha' : 'Nova Ficha')),
+      appBar: AppBar(
+          title: Text(
+              widget.initialFicha != null ? 'Editar Ficha' : 'Nova Ficha')),
       body: Stack(
         children: [
           Form(
             key: _formKey,
             child: Stepper(
-              key: ValueKey(steps.length), 
+              key: ValueKey(steps.length),
               currentStep: _currentStep,
               onStepContinue: () {
                 if (_currentStep < steps.length - 1) {
@@ -352,11 +518,17 @@ class _FormScreenState extends State<FormScreen> {
                   if (_formKey.currentState!.validate()) _salvar();
                 }
               },
-              onStepCancel: _currentStep > 0 ? () => setState(() => _currentStep--) : null,
+              onStepCancel: _currentStep > 0
+                  ? () => setState(() => _currentStep--)
+                  : null,
               steps: steps,
             ),
           ),
-          if (_isSaving) Container(color: Colors.black54, child: const Center(child: CircularProgressIndicator(color: Colors.white))),
+          if (_isSaving)
+            Container(
+                color: Colors.black54,
+                child: const Center(
+                    child: CircularProgressIndicator(color: Colors.white))),
         ],
       ),
     );
