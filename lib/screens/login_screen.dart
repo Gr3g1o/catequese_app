@@ -10,8 +10,8 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  bool _isInternal = false; 
-  bool _codigoEnviado = false; 
+  bool _isInternal = false;
+  bool _codigoEnviado = false;
   bool _isLoading = false;
 
   final _emailController = TextEditingController();
@@ -27,7 +27,8 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _exibirEULA(BuildContext context) {
-    if (_emailController.text.trim().isEmpty || !_emailController.text.contains('@')) {
+    if (_emailController.text.trim().isEmpty ||
+        !_emailController.text.contains('@')) {
       _mostrarErro('Digite um e-mail válido antes de continuar.');
       return;
     }
@@ -54,8 +55,8 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
           ElevatedButton(
             onPressed: () {
-              Navigator.pop(context); 
-              _pedirCodigo(); 
+              Navigator.pop(context);
+              _pedirCodigo();
             },
             child: const Text('ACEITAR E ENTRAR'),
           ),
@@ -66,25 +67,30 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _pedirCodigo() async {
     setState(() => _isLoading = true);
-    FocusScope.of(context).unfocus(); 
+    FocusScope.of(context).unfocus();
 
-    bool sucesso = await ApiService.solicitarCodigoEmail(_emailController.text);
+    // Agora recebemos um Map, não mais um bool
+    final result = await ApiService.solicitarCodigoEmail(_emailController.text);
+
     setState(() => _isLoading = false);
 
-    if (sucesso) {
+    if (result['sucesso'] == true) {
       setState(() => _codigoEnviado = true);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Código enviado! Verifique seu e-mail.'), backgroundColor: Colors.green),
+        const SnackBar(
+            content: Text('Código enviado! Verifique seu e-mail.'),
+            backgroundColor: Colors.green),
       );
     } else {
-      _mostrarErro('Erro ao enviar o código. Tente novamente mais tarde.');
+      // AQUI ESTÁ A MÁGICA: Pega a mensagem vinda do servidor (ex: "Muitas tentativas...")
+      _mostrarErro(result['erro'] ?? 'Erro ao enviar o código.');
     }
   }
 
   // --- NOVO: FORÇAR DIGITAÇÃO DO NOME ---
   Future<void> _pedirNomeObrigatorio(String emailSalvo) async {
     final nomeCtrl = TextEditingController();
-    
+
     await showDialog(
       context: context,
       barrierDismissible: false, // Não deixa fechar clicando fora
@@ -93,7 +99,8 @@ class _LoginScreenState extends State<LoginScreen> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('Como este é o seu primeiro acesso, por favor, informe seu Nome e Sobrenome para identificação:'),
+            const Text(
+                'Como este é o seu primeiro acesso, por favor, informe seu Nome e Sobrenome para identificação:'),
             const SizedBox(height: 15),
             TextField(
               controller: nomeCtrl,
@@ -113,7 +120,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 return;
               }
               // Atualiza o perfil no banco e no app
-              await ApiService.atualizarMeuPerfil(nomeCtrl.text.trim(), emailSalvo);
+              await ApiService.atualizarMeuPerfil(
+                  nomeCtrl.text.trim(), emailSalvo);
               Navigator.pop(context); // Fecha o dialog
             },
             child: const Text('Salvar e Continuar'),
@@ -121,10 +129,11 @@ class _LoginScreenState extends State<LoginScreen> {
         ],
       ),
     );
-    
+
     // Após preencher, vai para a Home
     if (mounted) {
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const HomeScreen()));
+      Navigator.pushReplacement(
+          context, MaterialPageRoute(builder: (context) => const HomeScreen()));
     }
   }
 
@@ -149,7 +158,8 @@ class _LoginScreenState extends State<LoginScreen> {
       if (result['nome'] == 'Usuário' || result['nome'] == null) {
         await _pedirNomeObrigatorio(result['email'] ?? _emailController.text);
       } else {
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const HomeScreen()));
+        Navigator.pushReplacement(context,
+            MaterialPageRoute(builder: (context) => const HomeScreen()));
       }
     } else {
       _mostrarErro('Código inválido ou expirado.');
@@ -165,7 +175,8 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
     FocusScope.of(context).unfocus();
 
-    final result = await ApiService.loginInterno(_userController.text, _passController.text);
+    final result = await ApiService.loginInterno(
+        _userController.text, _passController.text);
 
     setState(() => _isLoading = false);
 
@@ -173,7 +184,8 @@ class _LoginScreenState extends State<LoginScreen> {
       if (result['nome'] == 'Usuário' || result['nome'] == null) {
         await _pedirNomeObrigatorio(result['email'] ?? '');
       } else {
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const HomeScreen()));
+        Navigator.pushReplacement(context,
+            MaterialPageRoute(builder: (context) => const HomeScreen()));
       }
     } else {
       _mostrarErro('Usuário ou senha incorretos.');
@@ -195,16 +207,19 @@ class _LoginScreenState extends State<LoginScreen> {
               const Text(
                 'Paróquia São José Operário',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF0D47A1)),
+                style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF0D47A1)),
               ),
               const SizedBox(height: 40),
-
               if (_isLoading)
                 const CircularProgressIndicator()
               else if (!_isInternal) ...[
                 // --- FLUXO PARA PAIS (E-MAIL) ---
                 if (!_codigoEnviado) ...[
-                  const Text('Acesse sua ficha de catequese', style: TextStyle(fontSize: 16)),
+                  const Text('Acesse sua ficha de catequese',
+                      style: TextStyle(fontSize: 16)),
                   const SizedBox(height: 20),
                   TextField(
                     controller: _emailController,
@@ -223,7 +238,9 @@ class _LoginScreenState extends State<LoginScreen> {
                     onTap: () => _exibirEULA(context),
                   ),
                 ] else ...[
-                  Text('Código enviado para:\n${_emailController.text}', textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.bold)),
+                  Text('Código enviado para:\n${_emailController.text}',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 20),
                   TextField(
                     controller: _codigoController,
@@ -256,19 +273,22 @@ class _LoginScreenState extends State<LoginScreen> {
                 if (!_codigoEnviado)
                   TextButton(
                     onPressed: () => setState(() => _isInternal = true),
-                    child: const Text('Sou Catequista / Admin', style: TextStyle(color: Colors.grey)),
+                    child: const Text('Sou Catequista / Admin',
+                        style: TextStyle(color: Colors.grey)),
                   )
               ] else ...[
                 // --- FORMULÁRIO PARA CATEQUISTAS/ADMIN ---
                 TextField(
                   controller: _userController,
-                  decoration: const InputDecoration(labelText: 'Usuário', border: OutlineInputBorder()),
+                  decoration: const InputDecoration(
+                      labelText: 'Usuário', border: OutlineInputBorder()),
                 ),
                 const SizedBox(height: 15),
                 TextField(
                   controller: _passController,
                   obscureText: true,
-                  decoration: const InputDecoration(labelText: 'Senha', border: OutlineInputBorder()),
+                  decoration: const InputDecoration(
+                      labelText: 'Senha', border: OutlineInputBorder()),
                 ),
                 const SizedBox(height: 20),
                 _botaoLogin(
@@ -289,7 +309,11 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _botaoLogin({required String label, required IconData icon, required Color color, required VoidCallback onTap}) {
+  Widget _botaoLogin(
+      {required String label,
+      required IconData icon,
+      required Color color,
+      required VoidCallback onTap}) {
     return SizedBox(
       width: double.infinity,
       height: 55,
@@ -297,7 +321,8 @@ class _LoginScreenState extends State<LoginScreen> {
         style: ElevatedButton.styleFrom(
           backgroundColor: color,
           foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ),
         onPressed: onTap,
         icon: Icon(icon),

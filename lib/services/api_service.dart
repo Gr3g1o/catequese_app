@@ -9,7 +9,8 @@ class ApiService {
   static const String baseUrl = 'https://catequese-api-6cgg.onrender.com/api';
 
   // --- LÓGICA DE TOKEN E PREFERÊNCIAS ---
-  static Future<void> _salvarDadosLogin(String token, String role, String userId, String nome, String email) async {
+  static Future<void> _salvarDadosLogin(String token, String role,
+      String userId, String nome, String email) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('token', token);
     await prefs.setString('role', role);
@@ -29,21 +30,32 @@ class ApiService {
   }
 
   // --- ROTAS DE AUTENTICAÇÃO ---
-  static Future<bool> solicitarCodigoEmail(String email) async {
+  static Future<Map<String, dynamic>> solicitarCodigoEmail(String email) async {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/auth/request-code'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'email': email.trim()}),
       );
-      return response.statusCode == 200;
+
+      if (response.statusCode == 200) {
+        return {'sucesso': true};
+      } else {
+        // Se der erro (como o 429 do Rate Limit), pegamos a mensagem exata do servidor
+        final data = jsonDecode(response.body);
+        return {
+          'sucesso': false,
+          'erro': data['erro'] ?? 'Erro ao enviar código.'
+        };
+      }
     } catch (e) {
-      return false;
+      return {'sucesso': false, 'erro': 'Erro de conexão com o servidor.'};
     }
   }
 
   // Agora retorna um Map para sabermos qual o nome do usuário
-  static Future<Map<String, dynamic>> validarCodigoEmail(String email, String codigo) async {
+  static Future<Map<String, dynamic>> validarCodigoEmail(
+      String email, String codigo) async {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/auth/verify-code'),
@@ -54,7 +66,8 @@ class ApiService {
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final user = data['user'];
-        await _salvarDadosLogin(data['token'], user['role'], user['_id'], user['nome'], user['email']);
+        await _salvarDadosLogin(data['token'], user['role'], user['_id'],
+            user['nome'], user['email']);
         return {'sucesso': true, 'nome': user['nome'], 'email': user['email']};
       }
       return {'sucesso': false};
@@ -63,18 +76,21 @@ class ApiService {
     }
   }
 
-  static Future<Map<String, dynamic>> loginInterno(String username, String password) async {
+  static Future<Map<String, dynamic>> loginInterno(
+      String username, String password) async {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/auth/internal'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'username': username.trim(), 'password': password.trim()}),
+        body: jsonEncode(
+            {'username': username.trim(), 'password': password.trim()}),
       );
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         final user = data['user'];
-        await _salvarDadosLogin(data['token'], user['role'], user['_id'], user['nome'], user['email']);
+        await _salvarDadosLogin(data['token'], user['role'], user['_id'],
+            user['nome'], user['email']);
         return {'sucesso': true, 'nome': user['nome'], 'email': user['email']};
       }
       return {'sucesso': false};
@@ -88,7 +104,10 @@ class ApiService {
     final token = await getToken();
     final response = await http.put(
       Uri.parse('$baseUrl/users/me'),
-      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token'
+      },
       body: jsonEncode({'nome': nome, 'email': email}),
     );
     if (response.statusCode == 200) {
@@ -110,7 +129,7 @@ class ApiService {
   }
 
   // --- ROTAS DE FICHAS (COM PAGINAÇÃO) ---
-static Future<List<Ficha>> getFichas({bool incluirInativos = false}) async {
+  static Future<List<Ficha>> getFichas({bool incluirInativos = false}) async {
     final token = await getToken();
     final response = await http.get(
       Uri.parse('$baseUrl/fichas?incluirInativos=$incluirInativos'),
@@ -131,7 +150,10 @@ static Future<List<Ficha>> getFichas({bool incluirInativos = false}) async {
     final token = await getToken();
     final response = await http.post(
       Uri.parse('$baseUrl/fichas'),
-      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token'
+      },
       body: jsonEncode(ficha.toJson()),
     );
     return response.statusCode == 201;
@@ -142,7 +164,10 @@ static Future<List<Ficha>> getFichas({bool incluirInativos = false}) async {
     final token = await getToken();
     final response = await http.put(
       Uri.parse('$baseUrl/fichas/${ficha.id}'),
-      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token'
+      },
       body: jsonEncode(ficha.toJson()),
     );
     return response.statusCode == 200;
@@ -152,12 +177,15 @@ static Future<List<Ficha>> getFichas({bool incluirInativos = false}) async {
     final token = await getToken();
     final response = await http.patch(
       Uri.parse('$baseUrl/fichas/$id/inativar'),
-      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token'
+      },
     );
     return response.statusCode == 200;
   }
 
-static Future<bool> deletarFicha(String id) async {
+  static Future<bool> deletarFicha(String id) async {
     final token = await getToken();
     final response = await http.delete(
       Uri.parse('$baseUrl/fichas/$id'),
@@ -165,6 +193,7 @@ static Future<bool> deletarFicha(String id) async {
     );
     return response.statusCode == 200;
   }
+
   // --- ROTAS DE ADMINISTRAÇÃO DE USUÁRIOS (COM PAGINAÇÃO) ---
   static Future<List<dynamic>> getUsers({int page = 1, int limit = 10}) async {
     final token = await getToken();
@@ -180,20 +209,28 @@ static Future<bool> deletarFicha(String id) async {
     final token = await getToken();
     final response = await http.post(
       Uri.parse('$baseUrl/admin/users'),
-      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token'
+      },
       body: jsonEncode(userData),
     );
     if (response.statusCode != 201) throw Exception('Falha ao criar usuário');
   }
 
-  static Future<void> updateUser(String id, Map<String, dynamic> userData) async {
+  static Future<void> updateUser(
+      String id, Map<String, dynamic> userData) async {
     final token = await getToken();
     final response = await http.put(
       Uri.parse('$baseUrl/admin/users/$id'),
-      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token'
+      },
       body: jsonEncode(userData),
     );
-    if (response.statusCode != 200) throw Exception('Falha ao atualizar usuário');
+    if (response.statusCode != 200)
+      throw Exception('Falha ao atualizar usuário');
   }
 
   static Future<void> deleteUser(String id) async {
