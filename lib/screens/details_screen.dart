@@ -235,6 +235,53 @@ class _DetailsScreenState extends State<DetailsScreen> {
     }
   }
 
+// --- NOVA FUNÇÃO: VISUALIZAR ANEXO ---
+  void _mostrarAnexo(BuildContext context) {
+    if (_fichaAtual.anexoBase64 == null) return;
+    
+    final bytes = base64Decode(_fichaAtual.anexoBase64!);
+    final isPdf = _fichaAtual.nomeAnexo?.toLowerCase().endsWith('.pdf') ?? false;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return Dialog(
+          child: Container(
+            width: double.infinity,
+            height: MediaQuery.of(context).size.height * 0.8,
+            padding: const EdgeInsets.all(8),
+            child: Column(
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(_fichaAtual.nomeAnexo ?? 'Anexo',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                          overflow: TextOverflow.ellipsis),
+                    ),
+                    IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context)),
+                  ],
+                ),
+                Expanded(
+                  child: isPdf 
+                    ? PdfPreview(
+                        build: (format) => bytes,
+                        allowPrinting: true,
+                        allowSharing: true,
+                        canChangeOrientation: false,
+                        canChangePageFormat: false,
+                      )
+                    : InteractiveViewer(child: Image.memory(bytes)),
+                )
+              ]
+            ),
+          ),
+        );
+      }
+    );
+  }
+
 // --- FUNÇÃO DE IMPRESSÃO ---
   Future<void> _imprimirFicha() async {
     final pdf = pw.Document();
@@ -869,6 +916,35 @@ class _DetailsScreenState extends State<DetailsScreen> {
                                     fit: BoxFit.contain))
                           else
                             const Text('Nenhuma assinatura registrada.',
+                                style: TextStyle(fontStyle: FontStyle.italic))
+                        ]))),
+            const SizedBox(height: 10),
+            Card(
+                elevation: 3,
+                child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          const Text('Anexos',
+                              style: TextStyle(
+                                  fontSize: 20,
+                                  color: Colors.blue,
+                                  fontWeight: FontWeight.bold)),
+                          const Divider(),
+                          const SizedBox(height: 10),
+                          if (_fichaAtual.anexoBase64 != null &&
+                              _fichaAtual.anexoBase64!.isNotEmpty) ...[
+                            Text('Arquivo: ${_fichaAtual.nomeAnexo ?? 'Documento'}',
+                                style: const TextStyle(fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 10),
+                            ElevatedButton.icon(
+                              onPressed: () => _mostrarAnexo(context),
+                              icon: const Icon(Icons.remove_red_eye),
+                              label: const Text('Visualizar Anexo'),
+                            )
+                          ] else
+                            const Text('Nenhum arquivo anexado.',
                                 style: TextStyle(fontStyle: FontStyle.italic))
                         ]))),
             const SizedBox(height: 30),

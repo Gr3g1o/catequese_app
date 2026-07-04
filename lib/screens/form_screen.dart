@@ -1,5 +1,6 @@
 import '../widgets/uf_autocomplete.dart';
 import 'dart:convert';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:signature/signature.dart';
 import 'package:mask_text_input_formatter/mask_text_input_formatter.dart';
@@ -65,6 +66,10 @@ class _FormScreenState extends State<FormScreen> {
     penColor: Colors.black,
     exportBackgroundColor: Colors.white,
   );
+
+  // Anexo
+  PlatformFile? _anexoFile;
+  String? _nomeAnexoOriginal;
 
   // Máscaras
   var maskData = MaskTextInputFormatter(
@@ -146,6 +151,33 @@ class _FormScreenState extends State<FormScreen> {
     _inscNoivos = f.inscricaoNoivos;
     _inscAdultos = f.inscricaoAdultos;
     _etapa = f.etapa ?? '0';
+    _nomeAnexoOriginal = f.nomeAnexo;
+  }
+
+  Future<void> _pickFile() async {
+    FilePickerResult? result = await FilePicker.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
+      withData: true,
+    );
+
+    if (result != null) {
+      final file = result.files.first;
+      
+      // Validação de tamanho (5 MB = 5 * 1024 * 1024 bytes)
+      if (file.size > 5 * 1024 * 1024) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Arquivo muito grande! O limite é de 5 MB.')),
+          );
+        }
+        return;
+      }
+
+      setState(() {
+        _anexoFile = file;
+      });
+    }
   }
 
   Future<void> _buscarCEP(String cep) async {
@@ -177,6 +209,20 @@ class _FormScreenState extends State<FormScreen> {
       if (signatureBytes != null) {
         signatureBase64 = base64Encode(signatureBytes);
       }
+    }
+
+    String? base64Anexo = widget.initialFicha?.anexoBase64;
+    String? finalNomeAnexo = widget.initialFicha?.nomeAnexo;
+
+    if (_anexoFile != null) {
+      if (_anexoFile!.bytes != null) {
+        base64Anexo = base64Encode(_anexoFile!.bytes!);
+      }
+      finalNomeAnexo = _anexoFile!.name;
+    } else if (_anexoFile == null && _nomeAnexoOriginal == null) {
+      // Se o usuário removeu o arquivo
+      base64Anexo = null;
+      finalNomeAnexo = null;
     }
 
     final fichaParaSalvar = Ficha(
@@ -213,6 +259,8 @@ class _FormScreenState extends State<FormScreen> {
       inscricaoNoivos: _inscNoivos,
       inscricaoAdultos: _inscAdultos,
       etapa: _etapa,
+      anexoBase64: base64Anexo,
+      nomeAnexo: finalNomeAnexo,
     );
 
     bool sucesso;
@@ -223,6 +271,51 @@ class _FormScreenState extends State<FormScreen> {
     }
     setState(() => _isSaving = false);
     if (sucesso && mounted) Navigator.pop(context, true);
+  }
+
+  void _mostrarErroValidacao() {
+    List<Map<String, dynamic>> erros = [];
+    
+    if (_nomeController.text.trim().isEmpty) {
+      erros.add({'campo': 'Nome Completo', 'step': 0});
+    }
+    if (_nascimentoController.text.trim().isEmpty) {
+      erros.add({'campo': 'Data de Nascimento', 'step': 0});
+    }
+
+    if (erros.isNotEmpty) {
+      showDialog(
+        context: context,
+        builder: (context) {
+          return AlertDialog(
+            title: const Text('Ops! Faltam informações'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Por favor, preencha os campos obrigatórios abaixo:'),
+                const SizedBox(height: 10),
+                ...erros.map((erro) => ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.error, color: Colors.red),
+                  title: Text(erro['campo'], style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
+                  trailing: const Icon(Icons.arrow_forward_ios, size: 14),
+                  onTap: () {
+                    Navigator.pop(context);
+                    setState(() {
+                      _currentStep = erro['step'];
+                    });
+                  },
+                )),
+              ],
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Entendi'))
+            ],
+          );
+        }
+      );
+    }
   }
 
   List<Step> _getSteps() {
@@ -477,7 +570,7 @@ class _FormScreenState extends State<FormScreen> {
           isActive: _currentStep >= 4,
         ),
       Step(
-        title: const Text('Assinatura'),
+        title: const Text('Assinatura e Anexos'),
         content: Column(children: [
           const Text('Assine abaixo:',
               style: TextStyle(fontWeight: FontWeight.bold)),
@@ -491,6 +584,39 @@ class _FormScreenState extends State<FormScreen> {
           TextButton(
               onPressed: () => _signatureController.clear(),
               child: const Text('Limpar Assinatura')),
+          
+          const Divider(height: 30),
+          const Text('Anexar Documento (PDF ou Imagem):', style: TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 10),
+          ElevatedButton.icon(
+            onPressed: _pickFile,
+            icon: const Icon(Icons.attach_file),
+            label: const Text('Escolher Arquivo'),
+          ),
+          if (_anexoFile != null) ...[
+            const SizedBox(height: 10),
+            Text('Arquivo selecionado: ${_anexoFile!.name}', style: const TextStyle(color: Colors.green)),
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  _anexoFile = null;
+                  _nomeAnexoOriginal = null;
+                });
+              },
+              child: const Text('Remover Arquivo', style: TextStyle(color: Colors.red)),
+            ),
+          ] else if (_nomeAnexoOriginal != null) ...[
+            const SizedBox(height: 10),
+            Text('Anexo atual: $_nomeAnexoOriginal', style: const TextStyle(color: Colors.blue)),
+            TextButton(
+              onPressed: () {
+                setState(() {
+                  _nomeAnexoOriginal = null;
+                });
+              },
+              child: const Text('Remover Arquivo', style: TextStyle(color: Colors.red)),
+            ),
+          ],
         ]),
         isActive: _currentStep >= (_userRole == 'user' ? 4 : 5),
       ),
@@ -516,7 +642,15 @@ class _FormScreenState extends State<FormScreen> {
                 if (_currentStep < steps.length - 1) {
                   setState(() => _currentStep++);
                 } else {
-                  if (_formKey.currentState!.validate()) _salvar();
+                  if (_nomeController.text.trim().isEmpty || _nascimentoController.text.trim().isEmpty) {
+                    _mostrarErroValidacao();
+                  } else {
+                    if (_formKey.currentState!.validate()) {
+                      _salvar();
+                    } else {
+                      _mostrarErroValidacao();
+                    }
+                  }
                 }
               },
               onStepCancel: _currentStep > 0

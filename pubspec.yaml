@@ -2,7 +2,7 @@ name: catequese_app
 description: "Projeto de ficha de catequese para a paróquia de São José Operário"
 publish_to: 'none'
 
-version: 1.0.0+3
+version: 1.0.0+5
 
 environment:
   sdk: '>=3.1.0 <4.0.0' # Ajustado para compatibilidade geral
@@ -23,6 +23,7 @@ dependencies:
   http: 1.6.0
   shared_preferences: 2.5.4
   google_sign_in: 7.2.0
+  file_picker: 11.0.2
 
 dev_dependencies:
   flutter_test:

@@ -25,6 +25,8 @@ class Ficha {
   final String? cidadeBatismo;
   final String? ufBatismo;
   final String? assinaturaBase64;
+  final String? anexoBase64;
+  final String? nomeAnexo;
   final bool isAtivo;
 
   // NOVOS CAMPOS
@@ -63,6 +65,8 @@ class Ficha {
     this.cidadeBatismo,
     this.ufBatismo,
     this.assinaturaBase64,
+    this.anexoBase64,
+    this.nomeAnexo,
     this.isAtivo = true,
     this.inscricaoBatismo = false,
     this.inscricaoEucaristia = false,
@@ -101,6 +105,8 @@ class Ficha {
       cidadeBatismo: json['cidadeBatismo'],
       ufBatismo: json['ufBatismo'],
       assinaturaBase64: json['assinaturaBase64'],
+      anexoBase64: json['anexoBase64'],
+      nomeAnexo: json['nomeAnexo'],
       isAtivo: json['isAtivo'] ?? true,
       inscricaoBatismo: json['inscricaoBatismo'] ?? false,
       inscricaoEucaristia: json['inscricaoEucaristia'] ?? false,
@@ -139,6 +145,8 @@ class Ficha {
       'cidadeBatismo': cidadeBatismo,
       'ufBatismo': ufBatismo,
       'assinaturaBase64': assinaturaBase64,
+      'anexoBase64': anexoBase64,
+      'nomeAnexo': nomeAnexo,
       'isAtivo': isAtivo,
       'inscricaoBatismo': inscricaoBatismo,
       'inscricaoEucaristia': inscricaoEucaristia,
