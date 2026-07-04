@@ -128,11 +128,35 @@ class ApiService {
     return response.statusCode == 200;
   }
 
-  // --- ROTAS DE FICHAS (COM PAGINAÇÃO) ---
-  static Future<List<Ficha>> getFichas({bool incluirInativos = false}) async {
+  // --- ROTAS DE FICHAS (COM PAGINAÇÃO E FILTROS) ---
+  static Future<List<Ficha>> getFichas({
+    bool incluirInativos = false,
+    int page = 1,
+    int limit = 10,
+    String search = '',
+    String status = 'todos',
+    String sacramento = 'Todos',
+    String etapa = 'Todas',
+    String catequista = 'Todos',
+    String ordenacao = 'nome_az',
+  }) async {
     final token = await getToken();
+
+    final uri = Uri.parse('$baseUrl/fichas').replace(queryParameters: {
+      'incluirInativos': incluirInativos.toString(),
+      'page': page.toString(),
+      'limit': limit.toString(),
+      if (search.isNotEmpty) 'search': search,
+      if (status != 'todos' && status != 'pendente') 'status': status,
+      if (status == 'pendente') 'status': 'pendente', // Mantém explícito
+      if (sacramento != 'Todos') 'sacramento': sacramento,
+      if (etapa != 'Todas') 'etapa': etapa,
+      if (catequista != 'Todos') 'catequista': catequista,
+      'ordenacao': ordenacao,
+    });
+
     final response = await http.get(
-      Uri.parse('$baseUrl/fichas?incluirInativos=$incluirInativos'),
+      uri,
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',
@@ -194,11 +218,28 @@ class ApiService {
     return response.statusCode == 200;
   }
 
-  // --- ROTAS DE ADMINISTRAÇÃO DE USUÁRIOS (COM PAGINAÇÃO) ---
-  static Future<List<dynamic>> getUsers({int page = 1, int limit = 10}) async {
+  // --- ROTAS DE ADMINISTRAÇÃO DE USUÁRIOS (COM PAGINAÇÃO E FILTROS) ---
+  static Future<List<dynamic>> getUsers({
+    int page = 1,
+    int limit = 10,
+    String search = '',
+    String role = 'todos',
+    String status = 'todos',
+    String ordenacao = 'nome_az',
+  }) async {
     final token = await getToken();
+
+    final uri = Uri.parse('$baseUrl/admin/users').replace(queryParameters: {
+      'page': page.toString(),
+      'limit': limit.toString(),
+      if (search.isNotEmpty) 'search': search,
+      if (role != 'todos') 'role': role,
+      if (status != 'todos') 'status': status,
+      'ordenacao': ordenacao,
+    });
+
     final response = await http.get(
-      Uri.parse('$baseUrl/admin/users?page=$page&limit=$limit'),
+      uri,
       headers: {'Authorization': 'Bearer $token'},
     );
     if (response.statusCode == 200) return jsonDecode(response.body);
@@ -229,8 +270,9 @@ class ApiService {
       },
       body: jsonEncode(userData),
     );
-    if (response.statusCode != 200)
+    if (response.statusCode != 200) {
       throw Exception('Falha ao atualizar usuário');
+    }
   }
 
   static Future<void> deleteUser(String id) async {

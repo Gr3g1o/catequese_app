@@ -1,3 +1,6 @@
+// 1. IMPORTAÇÕES NECESSÁRIAS PARA LER O ARQUIVO (A CORREÇÃO ESTÁ AQUI)
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -5,10 +8,18 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// 2. LENDO A CHAVE DO JEITO "KOTLIN"
+val keystoreProperties = Properties()
+val keystorePropertiesFile = rootProject.file("key.properties")
+if (keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.reader().use { reader ->
+        keystoreProperties.load(reader)
+    }
+}
+
 android {
-    namespace = "com.example.catequese_app"
+    namespace = "com.catequese.sjoc"
     
-    // Altere aqui para 36 para garantir compatibilidade em 2026
     compileSdk = 36 
     
     ndkVersion = flutter.ndkVersion
@@ -18,17 +29,27 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    // 3. AVISO DO DEPRECATED CORRIGIDO (Deixando mais simples)
     kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_17.toString()
+        jvmTarget = "17"
+    }
+    
+    signingConfigs {
+        create("release") {
+            keyAlias = keystoreProperties.getProperty("keyAlias")
+            keyPassword = keystoreProperties.getProperty("keyPassword")
+            val storeFilePath = keystoreProperties.getProperty("storeFile")
+            if (storeFilePath != null) {
+                storeFile = file(storeFilePath)
+            }
+            storePassword = keystoreProperties.getProperty("storePassword")
+        }
     }
 
     defaultConfig {
-        applicationId = "com.catequese.sjoc"
+        applicationId = "com.catequese.sjoc.app"
         
-        // Altere aqui para 21 (Obrigatório para a Assinatura/PDF)
         minSdk = flutter.minSdkVersion 
-        
-        // Altere aqui para 36 para seguir o padrão da Play Store
         targetSdk = 36 
         
         versionCode = flutter.versionCode
@@ -36,8 +57,10 @@ android {
     }
 
     buildTypes {
-        release {
-            signingConfig = signingConfigs.getByName("debug")
+        getByName("release") {
+            signingConfig = signingConfigs.getByName("release")
+            isMinifyEnabled = false 
+            isShrinkResources = false
         }
     }
 }

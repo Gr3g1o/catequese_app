@@ -174,8 +174,9 @@ class _FormScreenState extends State<FormScreen> {
     String signatureBase64 = widget.initialFicha?.assinaturaBase64 ?? '';
     if (_signatureController.isNotEmpty) {
       final signatureBytes = await _signatureController.toPngBytes();
-      if (signatureBytes != null)
+      if (signatureBytes != null) {
         signatureBase64 = base64Encode(signatureBytes);
+      }
     }
 
     final fichaParaSalvar = Ficha(
@@ -310,7 +311,7 @@ class _FormScreenState extends State<FormScreen> {
               inputFormatters: [maskCEP],
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(
-                  labelText: 'CEP', suffixIcon: const Icon(Icons.search)),
+                  labelText: 'CEP', suffixIcon: Icon(Icons.search)),
               onChanged: (v) {
                 if (v.length == 9) _buscarCEP(v);
               }),
@@ -341,7 +342,7 @@ class _FormScreenState extends State<FormScreen> {
         title: const Text('Vida Cristã'),
         content: Column(children: [
           DropdownButtonFormField<String>(
-              value: _paisCasados,
+              initialValue: _paisCasados,
               decoration:
                   const InputDecoration(labelText: 'Pais casados na Igreja?'),
               items: ['Sim', 'Não']
@@ -356,7 +357,7 @@ class _FormScreenState extends State<FormScreen> {
             const Divider(height: 30),
           ],
           DropdownButtonFormField<String>(
-              value: _isBatizado,
+              initialValue: _isBatizado,
               decoration:
                   const InputDecoration(labelText: 'Catequizando é Batizado?'),
               items: ['Sim', 'Não']
@@ -464,7 +465,7 @@ class _FormScreenState extends State<FormScreen> {
                   onChanged: (v) => setState(() => _inscAdultos = v!)),
               const SizedBox(height: 10),
               DropdownButtonFormField<String>(
-                value: _etapa,
+                initialValue: _etapa,
                 decoration: const InputDecoration(labelText: 'Etapa'),
                 items: ['0', '1', '2', '3']
                     .map((v) => DropdownMenuItem(value: v, child: Text(v)))

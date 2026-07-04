@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/ficha_model.dart';
@@ -16,7 +17,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  List<Ficha> _fichas = [];
+  final List<Ficha> _fichas = [];
   bool _isLoading = true;
   String _userRole = 'user';
   String _userName = 'Carregando...';
@@ -30,6 +31,14 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isSearching = false;
   String _buscaNome = '';
   final TextEditingController _searchController = TextEditingController();
+
+  // --- VARIÁVEIS DE PAGINAÇÃO E BUSCA ---
+  bool _isLoadingMore = false;
+  int _currentPage = 1;
+  bool _hasMore = true;
+  int _limit = 10;
+  final ScrollController _scrollController = ScrollController();
+  Timer? _debounce;
 
   // LISTA DINÂMICA DE STATUS (Mostra inativo apenas para Admin)
   List<String> get _listaDeStatusPermitidos {
@@ -49,6 +58,30 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _carregarPerfilERecursos();
+
+    _scrollController.addListener(() {
+      if (_scrollController.position.pixels >=
+              _scrollController.position.maxScrollExtent - 200 &&
+          !_isLoadingMore &&
+          _hasMore) {
+        _carregarMaisFichas();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged(String query) {
+    if (_debounce?.isActive ?? false) _debounce!.cancel();
+    _debounce = Timer(const Duration(milliseconds: 500), () {
+      setState(() => _buscaNome = query);
+      _carregarFichasDaNuvem(isRefresh: true);
+    });
   }
 
   Future<void> _carregarPerfilERecursos() async {
@@ -58,21 +91,48 @@ class _HomeScreenState extends State<HomeScreen> {
       _userName = prefs.getString('userName') ?? 'Usuário';
       if (_userRole == 'user') _statusFiltro = 'pendente';
     });
-    _carregarFichasDaNuvem();
+    _carregarFichasDaNuvem(isRefresh: true);
   }
 
-  Future<void> _carregarFichasDaNuvem() async {
-    setState(() => _isLoading = true);
+  Future<void> _carregarFichasDaNuvem({bool isRefresh = false}) async {
+    if (isRefresh) {
+      setState(() {
+        _isLoading = true;
+        _currentPage = 1;
+        _hasMore = true;
+        _fichas.clear();
+      });
+    } else if (_fichas.isEmpty && !_isLoading) {
+      setState(() => _isLoading = true);
+    }
     try {
-      // Se for Admin, avisa a API para trazer as fichas inativas também
-      final fichasDaNuvem =
-          await ApiService.getFichas(incluirInativos: _userRole == 'admin');
-      setState(() => _fichas = fichasDaNuvem);
+      final fichasDaNuvem = await ApiService.getFichas(
+        incluirInativos: _userRole == 'admin',
+        page: _currentPage,
+        limit: _limit,
+        search: _buscaNome,
+        status: _userRole == 'user' ? 'ativo' : _statusFiltro,
+        sacramento: _sacramentoFiltro,
+        etapa: _etapaSelecionada,
+        catequista: _catequistaSelecionado,
+        ordenacao: _ordenacao,
+      );
+      setState(() {
+        if (fichasDaNuvem.length < _limit) _hasMore = false;
+        _fichas.addAll(fichasDaNuvem);
+      });
     } catch (e) {
       debugPrint('Erro ao carregar: $e');
     } finally {
       setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _carregarMaisFichas() async {
+    setState(() => _isLoadingMore = true);
+    _currentPage++;
+    await _carregarFichasDaNuvem();
+    setState(() => _isLoadingMore = false);
   }
 
   void _fazerLogout() async {
@@ -106,9 +166,9 @@ class _HomeScreenState extends State<HomeScreen> {
     List<String> todosCatequistas = _fichas
         .where((f) {
           bool isNoSacramento = false;
-          if (sacramento == 'Batismo')
+          if (sacramento == 'Batismo') {
             isNoSacramento = f.inscricaoBatismo;
-          else if (sacramento == 'Eucaristia')
+          } else if (sacramento == 'Eucaristia')
             isNoSacramento = f.inscricaoEucaristia;
           else if (sacramento == 'Crisma')
             isNoSacramento = f.inscricaoCrisma;
@@ -164,6 +224,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               });
                               Navigator.pop(context);
                               Navigator.pop(context);
+                              _carregarFichasDaNuvem(isRefresh: true);
                             },
                           );
                         },
@@ -182,6 +243,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     });
                     Navigator.pop(context);
                     Navigator.pop(context);
+                    _carregarFichasDaNuvem(isRefresh: true);
                   },
                   child: const Text('Ver Todos'),
                 )
@@ -195,64 +257,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // --- LÓGICA DE FILTRAGEM ATUALIZADA ---
-    final List<Ficha> fichasFiltradas = _fichas.where((ficha) {
-      bool bateBusca =
-          ficha.nome.toLowerCase().contains(_buscaNome.toLowerCase());
-
-      // Se for usuário comum (pais), só vê o que for dele e o que estiver ativo
-      if (_userRole == 'user') return bateBusca && ficha.isAtivo;
-
-      bool bateStatus = false;
-      if (_statusFiltro == 'inativo') {
-        bateStatus = !ficha.isAtivo; // Se quer inativos, pega isAtivo == false
-      } else {
-        bateStatus = ficha.status == _statusFiltro &&
-            ficha.isAtivo; // Se quer o resto, pega isAtivo == true
-      }
-
-      bool bateSacramento = true;
-      if (_sacramentoFiltro == 'Batismo')
-        bateSacramento = ficha.inscricaoBatismo;
-      else if (_sacramentoFiltro == 'Crisma')
-        bateSacramento = ficha.inscricaoCrisma;
-      else if (_sacramentoFiltro == 'Pré-Catequese')
-        bateSacramento = ficha.inscricaoPreCatequese;
-      else if (_sacramentoFiltro == 'Eucaristia')
-        bateSacramento = ficha.inscricaoEucaristia;
-      else if (_sacramentoFiltro == 'Noivos')
-        bateSacramento = ficha.inscricaoNoivos;
-      else if (_sacramentoFiltro == 'Adultos')
-        bateSacramento = ficha.inscricaoAdultos;
-
-      if (_sacramentoFiltro != 'Todos') {
-        if (_etapaSelecionada != 'Todas' && ficha.etapa != _etapaSelecionada)
-          bateSacramento = false;
-        if (_catequistaSelecionado != 'Todos' &&
-            ficha.catequistaAtual != _catequistaSelecionado)
-          bateSacramento = false;
-      }
-      return bateStatus && bateSacramento && bateBusca;
-    }).toList();
-
-    // --- LÓGICA DE ORDENAÇÃO ---
-    switch (_ordenacao) {
-      case 'nome_az':
-        fichasFiltradas.sort(
-            (a, b) => a.nome.toLowerCase().compareTo(b.nome.toLowerCase()));
-        break;
-      case 'nome_za':
-        fichasFiltradas.sort(
-            (a, b) => b.nome.toLowerCase().compareTo(a.nome.toLowerCase()));
-        break;
-      case 'recente':
-        fichasFiltradas.sort((a, b) => (b.id ?? "").compareTo(a.id ?? ""));
-        break;
-      case 'antigo':
-        fichasFiltradas.sort((a, b) => (a.id ?? "").compareTo(b.id ?? ""));
-        break;
-    }
-
     return Scaffold(
       appBar: AppBar(
         title: _isSearching
@@ -264,7 +268,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     border: InputBorder.none,
                     hintStyle: TextStyle(color: Colors.black54)),
                 style: const TextStyle(color: Colors.black, fontSize: 18),
-                onChanged: (value) => setState(() => _buscaNome = value),
+                onChanged: _onSearchChanged,
               )
             : Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -290,7 +294,23 @@ class _HomeScreenState extends State<HomeScreen> {
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: 'Atualizar Lista',
-            onPressed: _carregarFichasDaNuvem,
+            onPressed: () => _carregarFichasDaNuvem(isRefresh: true),
+          ),
+          // Botão de Paginação
+          PopupMenuButton<int>(
+            icon: const Icon(Icons.format_list_numbered),
+            tooltip: 'Itens por Página',
+            onSelected: (val) {
+              setState(() => _limit = val);
+              _carregarFichasDaNuvem(isRefresh: true);
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(value: 10, child: Text('10 itens')),
+              const PopupMenuItem(value: 25, child: Text('25 itens')),
+              const PopupMenuItem(value: 50, child: Text('50 itens')),
+              const PopupMenuItem(value: 100, child: Text('100 itens')),
+              const PopupMenuItem(value: 9999, child: Text('Todos (máximo)')),
+            ],
           ),
           // ----------------------------------------
           IconButton(
@@ -300,13 +320,17 @@ class _HomeScreenState extends State<HomeScreen> {
               if (!_isSearching) {
                 _buscaNome = '';
                 _searchController.clear();
+                _carregarFichasDaNuvem(isRefresh: true);
               }
             }),
           ),
           if (_userRole != 'user')
             PopupMenuButton<String>(
               icon: const Icon(Icons.sort_by_alpha),
-              onSelected: (val) => setState(() => _ordenacao = val),
+              onSelected: (val) {
+                setState(() => _ordenacao = val);
+                _carregarFichasDaNuvem(isRefresh: true);
+              },
               itemBuilder: (context) => [
                 const PopupMenuItem(value: 'nome_az', child: Text('A - Z')),
                 const PopupMenuItem(value: 'nome_za', child: Text('Z - A')),
@@ -380,6 +404,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             _catequistaSelecionado = 'Todos';
                           });
                           Navigator.pop(context);
+                          _carregarFichasDaNuvem(isRefresh: true);
                         }),
                     ListTile(
                         leading: const Icon(Icons.child_friendly),
@@ -459,62 +484,81 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       ),
 
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _fichas.isEmpty
-              ? const Center(child: Text("Nenhuma ficha encontrada."))
-              : ListView.builder(
-                  itemCount: fichasFiltradas.length,
-                  itemBuilder: (context, index) {
-                    final ficha = fichasFiltradas[index];
-                    final corStatus = _obterCorStatus(
-                        !ficha.isAtivo ? 'inativo' : ficha.status);
+      body: RefreshIndicator(
+        onRefresh: () => _carregarFichasDaNuvem(isRefresh: true),
+        child: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : _fichas.isEmpty
+                ? SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    child: SizedBox(
+                        height: MediaQuery.of(context).size.height,
+                        child: const Center(
+                            child: Text("Nenhuma ficha encontrada."))))
+                : ListView.builder(
+                    controller: _scrollController,
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    itemCount: _fichas.length + (_isLoadingMore ? 1 : 0),
+                    itemBuilder: (context, index) {
+                      if (index == _fichas.length) {
+                        return const Center(
+                            child: Padding(
+                                padding: EdgeInsets.all(15),
+                                child: CircularProgressIndicator()));
+                      }
+                      final ficha = _fichas[index];
+                      final corStatus = _obterCorStatus(
+                          !ficha.isAtivo ? 'inativo' : ficha.status);
 
-                    return Card(
-                      margin: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 6),
-                      shape: RoundedRectangleBorder(
-                          side: BorderSide(color: corStatus, width: 1.5),
-                          borderRadius: BorderRadius.circular(10)),
-                      child: ListTile(
-                        leading: CircleAvatar(
-                            backgroundColor: corStatus,
-                            child:
-                                const Icon(Icons.person, color: Colors.white)),
-                        title: Text(ficha.nome,
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              decoration: !ficha.isAtivo
-                                  ? TextDecoration.lineThrough
-                                  : null, // Risca o nome se inativo
-                              color:
-                                  !ficha.isAtivo ? Colors.grey : Colors.black,
-                            )),
-                        subtitle: Text(
-                            "${ficha.etapa != '0' ? 'Nível ${ficha.etapa} • ' : ''}${ficha.catequistaAtual ?? 'Sem catequista'}"),
-                        onTap: () async {
-                          final refresh = await Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                  builder: (context) =>
-                                      DetailsScreen(ficha: ficha)));
-                          if (refresh == true) _carregarFichasDaNuvem();
-                        },
-                      ),
-                    );
-                  },
-                ),
+                      return Card(
+                        margin: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 6),
+                        shape: RoundedRectangleBorder(
+                            side: BorderSide(color: corStatus, width: 1.5),
+                            borderRadius: BorderRadius.circular(10)),
+                        child: ListTile(
+                          leading: CircleAvatar(
+                              backgroundColor: corStatus,
+                              child: const Icon(Icons.person,
+                                  color: Colors.white)),
+                          title: Text(ficha.nome,
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                decoration: !ficha.isAtivo
+                                    ? TextDecoration.lineThrough
+                                    : null, // Risca o nome se inativo
+                                color:
+                                    !ficha.isAtivo ? Colors.grey : Colors.black,
+                              )),
+                          subtitle: Text(
+                              "${ficha.etapa != '0' ? 'Nível ${ficha.etapa} • ' : ''}${ficha.catequistaAtual ?? 'Sem catequista'}"),
+                          onTap: () async {
+                            final refresh = await Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (context) =>
+                                        DetailsScreen(ficha: ficha)));
+                            if (refresh == true) {
+                              _carregarFichasDaNuvem(isRefresh: true);
+                            }
+                          },
+                        ),
+                      );
+                    },
+                  ),
+      ),
 
       // --- BARRA INFERIOR DINÂMICA ---
       bottomNavigationBar: _userRole == 'user'
           ? null
           : BottomNavigationBar(
-              currentIndex:
-                  _listaDeStatusPermitidos.indexOf(_statusFiltro) == -1
-                      ? 0
-                      : _listaDeStatusPermitidos.indexOf(_statusFiltro),
-              onTap: (index) => setState(
-                  () => _statusFiltro = _listaDeStatusPermitidos[index]),
+              currentIndex: !_listaDeStatusPermitidos.contains(_statusFiltro)
+                  ? 0
+                  : _listaDeStatusPermitidos.indexOf(_statusFiltro),
+              onTap: (index) {
+                setState(() => _statusFiltro = _listaDeStatusPermitidos[index]);
+                _carregarFichasDaNuvem(isRefresh: true);
+              },
               type: BottomNavigationBarType
                   .fixed, // Fixed obriga os textos a aparecerem
               selectedItemColor: _obterCorStatus(_statusFiltro),
@@ -545,7 +589,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     context,
                     MaterialPageRoute(
                         builder: (context) => const FormScreen()));
-                _carregarFichasDaNuvem();
+                _carregarFichasDaNuvem(isRefresh: true);
               },
               backgroundColor: Colors.blue[900],
               child: const Icon(Icons.add, color: Colors.white),

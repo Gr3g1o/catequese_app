@@ -642,8 +642,9 @@ class _DetailsScreenState extends State<DetailsScreen> {
                   MaterialPageRoute(
                       builder: (context) =>
                           FormScreen(initialFicha: _fichaAtual)));
-              if (precisaRecarregar == true && mounted)
+              if (precisaRecarregar == true && mounted) {
                 Navigator.pop(context, true);
+              }
             },
           ),
 
